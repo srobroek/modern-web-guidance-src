@@ -6,7 +6,7 @@
  * `gd dev`, opens a PR with `gd pr`, then returns to `main` and deletes the
  * local branch. eval-gap-watch closes the issue once the evals land.
  *
- * Usage: gd dev-gap [--dry-run] [--limit <n>]
+ * Usage: gd dev-gap [--dry-run] [--limit <n>] [--targets <apps>]
  */
 
 import child_process from 'node:child_process';
@@ -49,6 +49,7 @@ export interface FixEvalGapsOptions {
   limit?: number;
   verbose?: boolean;
   suiteConfig?: SuiteConfig;
+  targets?: readonly string[];
 }
 
 /** Decides which open eval-gap issues to work on, and why the rest are skipped. */
@@ -121,7 +122,7 @@ export const evalGapFixCli = {
   scanGuides: (): GuideInventory[] => scanAllGuides(),
   runDevGuide: async (inv: GuideInventory, options: FixEvalGapsOptions): Promise<boolean> => {
     const { devGuide } = await import('./dev-guide.ts');
-    return devGuide(inv.dir, { test: true, verbose: options.verbose, suiteConfig: options.suiteConfig }, inv);
+    return devGuide(inv.dir, { test: true, verbose: options.verbose, suiteConfig: options.suiteConfig, targets: options.targets }, inv);
   },
   runDevPr,
 };

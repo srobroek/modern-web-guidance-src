@@ -34,6 +34,13 @@ To skip agent evaluations and report generation after calibration, add `--no-tes
 gd dev <path/to/guide_dir> --no-test
 ```
 
+To run against specific target base app(s) (single or comma-separated) instead of all targets:
+
+```bash
+gd dev <path/to/guide_dir> --targets daily-grind
+gd dev <path/to/guide_dir> --targets daily-grind,devtools-times
+```
+
 ### Submitting a Pull Request: `gd pr`
 
 Once `gd dev` completes and generates `test-app-results/report.md`, you can create a Pull Request directly from your terminal:
@@ -58,9 +65,10 @@ This will automatically:
 `eval-gap-watch` files an "Evals missing for the \<guide-name\> guide" issue (label `eval-gap`) for each guide that needs evals. `gd dev-gap` works through those issues, running `gd dev` and `gd pr` for each guide in turn. It doesn't handle "Expectations changed" issues yet.
 
 ```bash
-gd dev-gap --dry-run   # show which guides would run and why the rest are skipped
-gd dev-gap --limit 1   # process at most one guide
-gd dev-gap             # process all of them
+gd dev-gap --dry-run                # show which guides would run and why the rest are skipped
+gd dev-gap --limit 1                # process at most one guide
+gd dev-gap --targets daily-grind    # run only for specific target base app(s)
+gd dev-gap                          # process all of them across all targets
 ```
 
 Run it from a clean, up-to-date `main`. For each guide it runs `gd dev`, opens a PR from a fresh `gd-dev/<guide-name>` branch, then returns to `main` and deletes the local branch. If a guide fails, its changes are discarded and the batch moves on; it stops only if it can't get back to a clean `main`. The issue closes on its own once the PR merges.
