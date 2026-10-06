@@ -1,6 +1,6 @@
 ---
 name: project-guide-validation
-description: Protocol for validating the technical accuracy, framework nuances, and evaluation readiness of web guidance. Use this skill when assigned to validate or review a guide, demo, or expectations file.
+description: Protocol for interactively validating the technical accuracy, framework nuances, and evaluation readiness of a local guide and demo using DevTools MCP. For reviewing Pull Requests, use `project-content-review`.
 ---
 
 # Guide Validation
