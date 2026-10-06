@@ -133,10 +133,10 @@ export function buildInitialDevReport(targetDir: string, summaries: TargetEvalSu
 /**
  * Runs the agent-driven evaluation report generation phase across all targets for a guide.
  */
-export async function runDevReport(targetDir: string): Promise<void> {
+export async function runDevReport(targetDir: string, targets: readonly string[] = SUPPORTED_BASE_APPS): Promise<void> {
   console.log(cCyan(`\n--- Running Evaluation Report ---`));
 
-  const summaries = SUPPORTED_BASE_APPS
+  const summaries = targets
     .map(baseApp => computeTargetSummary(targetDir, baseApp))
     .filter((s): s is TargetEvalSummary => s !== null);
 
@@ -151,7 +151,7 @@ export async function runDevReport(targetDir: string): Promise<void> {
   const initialReportContent = buildInitialDevReport(targetDir, summaries);
 
   const agent = getDefaultSolutionAgent();
-  const workDir = setupGuideDevWorkDir('report');
+  const { workDir, tempHome } = setupGuideDevWorkDir('report');
 
   try {
     // Copy guide.md, expectations.md, targets, and test-app-results to report sandbox
@@ -179,11 +179,11 @@ export async function runDevReport(targetDir: string): Promise<void> {
     });
 
     console.log(cCyan(`Invoking ${agent} to perform qualitative evaluation report...`));
-    await runAgent(agent, reportPrompt, workDir);
+    await runAgent(agent, reportPrompt, workDir, { homeDir: tempHome });
 
     fs.copyFileSync(workReportPath, finalReportPath);
   } finally {
-    fs.rmSync(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
+    fs.rmSync(tempHome, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
   }
 
   // Print console report summary
