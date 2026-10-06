@@ -162,6 +162,7 @@ test('buildDevReportPrompt creates comprehensive diagnostic prompt with flags an
   assert.ok(prompt.includes('Evaluation Results'));
   assert.ok(prompt.includes('Diagnostic Analysis & Actionable Recommendations'));
   assert.ok(prompt.includes('ROOT-CAUSE DIAGNOSIS RULES'));
+  assert.ok(prompt.includes('```diff'));
 });
 
 test('all reference files and type definitions referenced in grader generation exist on disk', () => {
