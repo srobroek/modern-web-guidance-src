@@ -31,7 +31,7 @@ The guide lacks Safari fallback examples.
 
 #### Actionable Recommendations:
 - \`guide.md\`: Add fallback syntax example for Safari.
-*(Note: After modifying source files, delete the targets/ directory and run gd dev to regenerate all target artifacts)*
+*(Note: After modifying source files, add the needs-eval-gen label to the PR to regenerate all target artifacts when running gd dev-gap)*
 `;
 
     const labels = determinePrLabels(report);
