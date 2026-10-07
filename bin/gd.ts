@@ -42,7 +42,7 @@ type OptionName = keyof typeof ALL_OPTIONS;
 const COMMAND_METADATA = {
   audit: { desc: 'Show status of all guides', flags: ['usecases'] },
   dev: { desc: 'Auto-generate and calibrate guide artifacts', flags: ['grade', 'test-grader', 'gen-grader', 'guided', 'no-test', 'cross-app', 'targets'] },
-  'dev-gap': { desc: 'Run dev + pr for each open eval-gap issue without a PR', flags: ['dry-run', 'limit', 'targets'] },
+  'dev-gap': { desc: 'Run dev + pr for open eval-gap issues and rerun-labeled PRs', flags: ['dry-run', 'limit', 'targets'] },
   eval: { desc: 'Run the full evaluation suite, or specific tasks', flags: ['config', 'ui'] },
   dashboard: { desc: 'Start the evaluation dashboard', flags: [] },
   run: { desc: 'Run an ad-hoc agent test against a template', flags: ['config'] },

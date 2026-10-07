@@ -57,23 +57,29 @@ This will automatically:
 3. Push your feature branch to `origin`.
 4. Analyze `report.md` to automatically detect and apply PR labels:
    - **`gd-dev-content`**: Attached if recommendations include modifications to `guide.md` or `expectations.md`.
-   - **`gd-dev-eval`**: Attached if recommendations include modifications to `task.md` or `grader.ts`. When the PR is marked ready for review, the ATL triage bot requests review from `EVAL_PR_REVIEWER` in `guides/atl-triage.ts`.
-5. Open a new draft Pull Request (or update the existing PR description and sync labels if an open PR already exists for the branch) with the full evaluation report (`report.md`) as the PR body description. It refuses to push a branch that still contains the commits of an already merged or closed PR; switch to a new branch off `main` instead.
+   - **`gd-dev-eval`**: Attached if recommendations include modifications to `task.md` or `grader.ts`.
+5. Open a new Pull Request (or update the existing PR description and sync labels if an open PR already exists for the branch) with the full evaluation report (`report.md`) as the PR body description. If an open `eval-gap` issue exists for the guide, `gd pr` appends `Closes https://github.com/GoogleChrome/modern-web-guidance-src/issues/<number>` so the issue closes automatically when the PR merges. When updating an existing PR, any `needs-eval-gen` or `needs-eval-run` trigger labels are automatically removed. It refuses to push a branch that still contains the commits of an already merged or closed PR; switch to a new branch off `main` instead.
 
-### Fixing Open Eval Gaps: `gd dev-gap`
+### Fixing Open Eval Gaps & Updating PRs: `gd dev-gap`
 
-`eval-gap-watch` files an "Evals missing for the \<guide-name\> guide" issue (label `eval-gap`) for each guide that needs evals. `gd dev-gap` works through those issues, running `gd dev` and `gd pr` for each guide in turn. It doesn't handle "Expectations changed" issues yet.
+`eval-gap-watch` files an "Evals missing for the \<guide-name\> guide" issue (label `eval-gap`) for each guide that needs evals. `gd dev-gap` works through those issues—as well as existing `gd pr` Pull Requests labeled for re-evaluation—running `gd dev` and `gd pr` for each guide in turn.
 
 ```bash
-gd dev-gap --dry-run                # show which guides would run and why the rest are skipped
+gd dev-gap --dry-run                # show which guides/PRs would run and why the rest are skipped
 gd dev-gap --limit 1                # process at most one guide
 gd dev-gap --targets daily-grind    # run only for specific target base app(s)
 gd dev-gap                          # process all of them across all targets
 ```
 
-Run it from a clean, up-to-date `main`. For each guide it runs `gd dev`, opens a PR from a fresh `gd-dev/<guide-name>` branch, then returns to `main` and deletes the local branch. If a guide fails, its changes are discarded and the batch moves on; it stops only if it can't get back to a clean `main`. The issue closes on its own once the PR merges.
+Run it from a clean, up-to-date `main`. For each new gap, it runs `gd dev`, opens a PR from a fresh `gd-dev/<guide-name>` branch (linking the `eval-gap` issue with `Closes <issue-url>`), then returns to `main` and deletes the local branch. If a guide fails, its changes are discarded and the batch moves on; it stops only if it can't get back to a clean `main`.
 
-It skips guides that already have an open `grader updates: <guide-name>` PR and guides whose `gd-dev/<guide-name>` branch still exists locally or on `origin` (delete the branch to retry).
+#### Re-running `gd dev-gap` on Open PRs (`needs-eval-gen` & `needs-eval-run`)
+
+After reviewers or authors push fixes to an open `gd pr` Pull Request, add one of the following labels to the PR so the next `gd dev-gap` run picks it up:
+- **`needs-eval-gen`**: Use when `guide.md` or `expectations.md` was updated. `gd dev-gap` fetches and checks out the PR branch, merges the latest `main`, deletes the targeted `targets/<app>` directory(s), and runs `gd dev` and `gd pr` to regenerate all target artifacts from scratch. (Takes precedence if both labels are present.)
+- **`needs-eval-run`**: Use when `targets/<app>/grader.ts` or `targets/<app>/task.md` was updated. `gd dev-gap` fetches and checks out the PR branch, merges the latest `main`, and runs `gd dev` and `gd pr` without deleting `targets/`, re-calibrating and re-running the evaluation against the existing target files.
+
+Once `gd pr` updates the PR, `needs-eval-gen` and `needs-eval-run` are automatically removed. Unlabeled open `grader updates: <guide-name>` PRs and guides with leftover `gd-dev/<guide-name>` branches without an open PR are skipped.
 
 ### Checking Status: `gd audit`
 

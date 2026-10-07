@@ -1,11 +1,21 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { cGreen, cCyan, cRed, cDim } from '../../lib/colors.ts';
 import { REPORT_FILE, TEST_APP_RESULTS_DIR } from '../../lib/guide-validation.ts';
+import { rootDir } from '../../lib/paths.ts';
+import { githubApi as evalGapGithubApi, parseMarker, type ExistingIssue } from '../eval-gap-watch.ts';
 
 export type DevPrLabel = 'gd-dev-content' | 'gd-dev-eval';
-export const ALL_DEV_PR_LABELS: readonly DevPrLabel[] = ['gd-dev-content', 'gd-dev-eval'];
+export type DevPrRerunLabel = 'needs-eval-gen' | 'needs-eval-run';
+
+const MANAGED_PR_LABELS: readonly string[] = [
+  'gd-dev-content',
+  'gd-dev-eval',
+  'needs-eval-gen',
+  'needs-eval-run',
+];
 
 interface OpenDevPr {
   number: number;
@@ -83,13 +93,20 @@ export const devPrCli = {
     };
     return prs.find(pr => pr.state !== 'OPEN' && inHistory(pr.headRefOid)) ?? null;
   },
+  listGapIssues(): ExistingIssue[] {
+    try {
+      return evalGapGithubApi.listIssues();
+    } catch {
+      return [];
+    }
+  },
   createPr(title: string, bodyPath: string, labels: DevPrLabel[]): string {
     const labelFlags = labels.map(l => `--label "${l}"`).join(' ');
-    return execSync(`gh pr create --draft --title "${title}" --body-file "${bodyPath}" ${labelFlags}`.trim(), {
+    return execSync(`gh pr create --title "${title}" --body-file "${bodyPath}" ${labelFlags}`.trim(), {
       encoding: 'utf-8',
     }).trim();
   },
-  editPr(prNumber: number, bodyPath: string, addLabels: DevPrLabel[], removeLabels: DevPrLabel[]): void {
+  editPr(prNumber: number, bodyPath: string, addLabels: DevPrLabel[], removeLabels: string[]): void {
     execSync(`gh api repos/{owner}/{repo}/pulls/${prNumber} --method PATCH -F body=@"${bodyPath}"`, { stdio: 'ignore' });
     for (const label of removeLabels) {
       try {
@@ -103,17 +120,31 @@ export const devPrCli = {
 };
 
 /**
+ * Appends `Closes https://github.com/GoogleChrome/modern-web-guidance-src/issues/<n>`
+ * lines for any open eval-gap issues matching `guidePath`.
+ */
+export function buildPrBody(reportContent: string, guidePath: string, openIssues: ExistingIssue[]): string {
+  const matchingIssues = openIssues.filter(i => parseMarker(i.body)?.guidePath === guidePath);
+  if (matchingIssues.length === 0) return reportContent;
+  const closesLines = matchingIssues.map(
+    i => `Closes https://github.com/GoogleChrome/modern-web-guidance-src/issues/${i.number}`
+  );
+  return `${reportContent.trimEnd()}\n\n${closesLines.join('\n')}\n`;
+}
+
+/**
  * Computes which gd-dev labels to add or remove based on new recommendations vs existing PR labels.
+ * Also removes any trigger rerun labels (`needs-eval-gen`, `needs-eval-run`).
  */
 export function computeLabelDiff(
   newLabels: DevPrLabel[],
   existingLabels: { name: string }[] = []
-): { addLabels: DevPrLabel[]; removeLabels: DevPrLabel[] } {
+): { addLabels: DevPrLabel[]; removeLabels: string[] } {
   const current = new Set((existingLabels || []).map(l => l.name));
-  const next = new Set(newLabels);
+  const next = new Set<string>(newLabels);
   return {
     addLabels: newLabels.filter(l => !current.has(l)),
-    removeLabels: ALL_DEV_PR_LABELS.filter(l => current.has(l) && !next.has(l)),
+    removeLabels: MANAGED_PR_LABELS.filter(l => current.has(l) && !next.has(l)),
   };
 }
 
@@ -213,31 +244,32 @@ export async function runDevPr(guideDir: string): Promise<string | null> {
     return null;
   }
 
-  // 4. Parse report.md for PR labels
+  // 4. Parse report.md for PR labels and append `Closes <issue-url>` if an open eval-gap issue exists
   const reportContent = fs.readFileSync(reportPath, 'utf-8');
   const labels = determinePrLabels(reportContent);
+  const guideRelPath = path.relative(rootDir, resolvedGuideDir);
+  const prBody = buildPrBody(reportContent, guideRelPath, devPrCli.listGapIssues());
+
+  const tempBodyFile = path.join(os.tmpdir(), `gd-pr-body-${process.pid}-${Date.now()}.md`);
+  fs.writeFileSync(tempBodyFile, prBody, 'utf-8');
 
   // 5. Update the branch's open PR, or create one
-  if (existingPr) {
-    const { addLabels, removeLabels } = computeLabelDiff(labels, existingPr.labels ?? []);
-    console.log(cCyan(`Updating existing Pull Request #${existingPr.number}...`));
-    try {
-      devPrCli.editPr(existingPr.number, reportPath, addLabels, removeLabels);
+  try {
+    if (existingPr) {
+      const { addLabels, removeLabels } = computeLabelDiff(labels, existingPr.labels ?? []);
+      console.log(cCyan(`Updating existing Pull Request #${existingPr.number}...`));
+      devPrCli.editPr(existingPr.number, tempBodyFile, addLabels, removeLabels);
       console.log(`\n${cGreen('📄 Updated Pull Request:')} ${existingPr.url}`);
       return existingPr.url;
-    } catch (err) {
-      console.error(cRed(`❌ Failed to update Pull Request #${existingPr.number} via gh CLI: ${(err as Error).message || String(err)}`));
-      return null;
     }
-  } else {
-    const prTitle = devPrTitle(guideName);
-    try {
-      const prUrl = devPrCli.createPr(prTitle, reportPath, labels);
-      console.log(`\n${cGreen('📄 Pull Request:')} ${prUrl}`);
-      return prUrl;
-    } catch (err) {
-      console.error(cRed(`❌ Failed to create Pull Request via gh CLI: ${(err as Error).message || String(err)}`));
-      return null;
-    }
+    const prUrl = devPrCli.createPr(devPrTitle(guideName), tempBodyFile, labels);
+    console.log(`\n${cGreen('📄 Pull Request:')} ${prUrl}`);
+    return prUrl;
+  } catch (err) {
+    const action = existingPr ? `update Pull Request #${existingPr.number}` : 'create Pull Request';
+    console.error(cRed(`❌ Failed to ${action} via gh CLI: ${(err as Error).message || String(err)}`));
+    return null;
+  } finally {
+    fs.rmSync(tempBodyFile, { force: true });
   }
 }

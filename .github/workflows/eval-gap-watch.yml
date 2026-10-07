@@ -1,8 +1,7 @@
 name: Eval Gap Watch
 
 on:
-  # Any of these can open or close an issue: guidance/expectations can create
-  # gaps, and grader/task changes (legacy or targets layout) can resolve them.
+  # Guidance/expectations changes can create missing-evals or expectations-changed gaps.
   push:
     branches: [main]
     paths:

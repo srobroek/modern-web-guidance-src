@@ -142,35 +142,21 @@ describe('planIssues', () => {
   it('files an issue for a new gap', () => {
     const plan = planIssues([gap], []);
     assert.deepStrictEqual(plan.toCreate, [gap]);
-    assert.deepStrictEqual(plan.toClose, []);
   });
 
   it('does not duplicate an already open issue', () => {
     const plan = planIssues([gap], [issueFor(gap)]);
     assert.deepStrictEqual(plan.toCreate, []);
-    assert.deepStrictEqual(plan.toClose, []);
-  });
-
-  it('closes a missing-evals issue once evals land', () => {
-    const plan = planIssues([], [issueFor(gap)]);
-    assert.strictEqual(plan.toClose.length, 1);
-    assert.strictEqual(plan.toClose[0].number, 7);
-  });
-
-  it('leaves expectations-changed issues for a human to close', () => {
-    const changed = makeGap({ kind: 'expectations-changed' });
-    assert.deepStrictEqual(planIssues([], [issueFor(changed)]).toClose, []);
   });
 
   it('ignores issues without a marker', () => {
-    const plan = planIssues([], [{ number: 99, body: 'unrelated', title: 'Other' }]);
-    assert.deepStrictEqual(plan.toClose, []);
+    const plan = planIssues([gap], [{ number: 99, body: 'unrelated', title: 'Other' }]);
+    assert.deepStrictEqual(plan.toCreate, [gap]);
   });
 
   it('keeps the two kinds independent for one guide', () => {
     const changed = makeGap({ kind: 'expectations-changed' });
     const plan = planIssues([changed], [issueFor(gap, { number: 1 })]);
     assert.deepStrictEqual(plan.toCreate, [changed]);
-    assert.strictEqual(plan.toClose[0].number, 1);
   });
 });

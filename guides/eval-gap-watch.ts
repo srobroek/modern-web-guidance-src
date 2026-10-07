@@ -9,7 +9,6 @@
  *                               also touch its evals, so they may be stale.
  *
  * Issues are keyed by a hidden marker comment so reruns don't file duplicates.
- * `missing-evals` issues close themselves once evals land.
  *
  * Usage: node --experimental-strip-types guides/eval-gap-watch.ts [--dry-run]
  */
@@ -132,25 +131,19 @@ export function buildIssue(gap: Gap): { title: string; body: string } {
 // --- Planning ---
 
 /**
- * Returns the issues to file and close, given the currently open issues. A gap
- * with an open issue is left alone. Only `missing-evals` auto-closes, since it
- * is recomputed from the tree every run; `expectations-changed` is a
- * point-in-time alert a human closes.
+ * Returns the issues to file, given the currently open issues. A gap with an
+ * open issue is left alone. Issues are closed via `Closes #<issue>` when the
+ * `gd pr` PR merges.
  */
-export function planIssues(gaps: Gap[], existing: ExistingIssue[]): { toCreate: Gap[]; toClose: ExistingIssue[] } {
-  const openIssues = new Map<string, ExistingIssue>();
+export function planIssues(gaps: Gap[], existing: ExistingIssue[]): { toCreate: Gap[] } {
+  const openKeys = new Set<string>();
   for (const issue of existing) {
     const marker = parseMarker(issue.body);
-    if (marker) openIssues.set(`${marker.kind}:${marker.guidePath}`, issue);
+    if (marker) openKeys.add(`${marker.kind}:${marker.guidePath}`);
   }
 
-  const gapKeys = new Set(gaps.map(g => `${g.kind}:${g.guidePath}`));
-
   return {
-    toCreate: gaps.filter(g => !openIssues.has(`${g.kind}:${g.guidePath}`)),
-    toClose: [...openIssues]
-      .filter(([key]) => key.startsWith('missing-evals:') && !gapKeys.has(key))
-      .map(([, issue]) => issue),
+    toCreate: gaps.filter(g => !openKeys.has(`${g.kind}:${g.guidePath}`)),
   };
 }
 
@@ -185,21 +178,13 @@ export const githubApi = {
       { stdio: 'inherit' }
     );
   },
-
-  closeIssue(issueNumber: number): void {
-    child_process.execFileSync(
-      'gh',
-      ['issue', 'close', String(issueNumber), '--reason', 'completed', '--comment', 'Closing — this guide no longer has a missing-evals gap.'],
-      { stdio: 'inherit' }
-    );
-  },
 };
 
 // --- Main ---
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   const dryRun = argv.includes('--dry-run') || process.env.DRY_RUN === 'true' || process.env.DRY_RUN === '1';
-  if (dryRun) console.log('🧪 Dry run — no issues will be filed or closed.\n');
+  if (dryRun) console.log('🧪 Dry run — no issues will be filed.\n');
 
   // The push's "before" commit. Manual runs have none, so they only check for missing evals.
   const before = process.env.EVAL_GAP_BEFORE;
@@ -210,14 +195,14 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const gaps = [...findMissingEvals(guides), ...findChangedExpectations(guides, changedFiles)];
   console.log(`Scanned ${guides.length} guides and ${changedFiles.length} changed file(s), found ${gaps.length} gap(s).`);
 
-  const { toCreate, toClose } = planIssues(gaps, githubApi.listIssues());
+  const { toCreate } = planIssues(gaps, githubApi.listIssues());
 
-  if (toCreate.length === 0 && toClose.length === 0) {
+  if (toCreate.length === 0) {
     console.log('✅ No changes needed.');
     return;
   }
 
-  if (!dryRun && toCreate.length > 0) githubApi.ensureLabel();
+  if (!dryRun) githubApi.ensureLabel();
 
   for (const gap of toCreate) {
     const { title, body } = buildIssue(gap);
@@ -226,14 +211,6 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       continue;
     }
     githubApi.createIssue(title, body);
-  }
-
-  for (const issue of toClose) {
-    if (dryRun) {
-      console.log(`[DRY RUN] Would close #${issue.number} ("${issue.title}")`);
-      continue;
-    }
-    githubApi.closeIssue(issue.number);
   }
 }
 

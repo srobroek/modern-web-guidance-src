@@ -6,10 +6,13 @@ import assert from 'node:assert/strict';
 import {
   determinePrLabels,
   computeLabelDiff,
+  buildPrBody,
   runDevPr,
   devPrCli,
   type DevPrLabel,
 } from './lib/dev-pr.ts';
+import { buildIssue } from './eval-gap-watch.ts';
+import { rootDir } from '../lib/paths.ts';
 
 describe('determinePrLabels', () => {
   it('detects gd-dev-content when guide.md is recommended', () => {
@@ -139,7 +142,7 @@ Target is healthy.
 });
 
 describe('computeLabelDiff', () => {
-  it('computes labels to add and remove correctly', () => {
+  it('computes labels to add and remove correctly, including rerun trigger labels', () => {
     // 1. Initial creation (no labels on PR yet)
     const diff1 = computeLabelDiff(['gd-dev-content'], []);
     assert.deepEqual(diff1.addLabels, ['gd-dev-content']);
@@ -150,10 +153,35 @@ describe('computeLabelDiff', () => {
     assert.deepEqual(diff2.addLabels, ['gd-dev-eval']);
     assert.deepEqual(diff2.removeLabels, ['gd-dev-content']);
 
-    // 3. All issues resolved (all gd-dev labels removed)
-    const diff3 = computeLabelDiff([], [{ name: 'gd-dev-content' }, { name: 'gd-dev-eval' }, { name: 'enhancement' }]);
+    // 3. All issues resolved + rerun labels cleared (all gd-dev and rerun labels removed)
+    const diff3 = computeLabelDiff([], [
+      { name: 'gd-dev-content' },
+      { name: 'gd-dev-eval' },
+      { name: 'needs-eval-gen' },
+      { name: 'needs-eval-run' },
+      { name: 'enhancement' },
+    ]);
     assert.deepEqual(diff3.addLabels, []);
-    assert.deepEqual(diff3.removeLabels, ['gd-dev-content', 'gd-dev-eval']);
+    assert.deepEqual(diff3.removeLabels, ['gd-dev-content', 'gd-dev-eval', 'needs-eval-gen', 'needs-eval-run']);
+  });
+});
+
+describe('buildPrBody', () => {
+  it('returns reportContent unchanged when no matching eval-gap issue is open', () => {
+    const issue = { number: 12, ...buildIssue({ kind: 'missing-evals', guidePath: 'guides/css/other', guideName: 'other' }) };
+    assert.equal(buildPrBody('# Report\n', 'guides/css/scrollspy', [issue]), '# Report\n');
+  });
+
+  it('appends Closes URLs for matching missing-evals and expectations-changed issues', () => {
+    const issues = [
+      { number: 10, ...buildIssue({ kind: 'missing-evals', guidePath: 'guides/css/scrollspy', guideName: 'scrollspy' }) },
+      { number: 15, ...buildIssue({ kind: 'expectations-changed', guidePath: 'guides/css/scrollspy', guideName: 'scrollspy' }) },
+    ];
+    const body = buildPrBody('# Report\n', 'guides/css/scrollspy', issues);
+    assert.equal(
+      body,
+      '# Report\n\nCloses https://github.com/GoogleChrome/modern-web-guidance-src/issues/10\nCloses https://github.com/GoogleChrome/modern-web-guidance-src/issues/15\n'
+    );
   });
 });
 
@@ -166,13 +194,14 @@ describe('runDevPr', () => {
     devPrCli.commitChanges = () => {};
     devPrCli.pushBranch = () => {};
     devPrCli.findFinishedPrInHistory = () => null;
+    devPrCli.listGapIssues = () => [];
   });
 
   afterEach(() => {
     Object.assign(devPrCli, originalDevPrCli);
   });
 
-  it('creates a new draft PR when no PR exists for branch', async () => {
+  it('creates a new PR and appends Closes link when an open eval-gap issue matches', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-pr-test-'));
     const resultsDir = path.join(tempDir, 'test-app-results');
     fs.mkdirSync(resultsDir, { recursive: true });
@@ -181,14 +210,21 @@ describe('runDevPr', () => {
       '# Report\n## Target: `test-app`\n#### Actionable Recommendations:\n- `guide.md`: Fix guide\n'
     );
 
+    const guideRelPath = path.relative(rootDir, tempDir);
+    devPrCli.listGapIssues = () => [
+      { number: 88, ...buildIssue({ kind: 'missing-evals', guidePath: guideRelPath, guideName: path.basename(tempDir) }) },
+    ];
+
     let prCreated = false;
     let prTitleArg = '';
+    let prBodyArg = '';
     let prLabelsArg: DevPrLabel[] = [];
 
     devPrCli.viewOpenPr = () => null;
-    devPrCli.createPr = (title, _bodyPath, labels) => {
+    devPrCli.createPr = (title, bodyPath, labels) => {
       prCreated = true;
       prTitleArg = title;
+      prBodyArg = fs.readFileSync(bodyPath, 'utf-8');
       prLabelsArg = labels;
       return 'https://github.com/GoogleChrome/modern-web-guidance-src/pull/101';
     };
@@ -199,12 +235,13 @@ describe('runDevPr', () => {
       assert.equal(prCreated, true);
       assert.equal(prTitleArg, `grader updates: ${path.basename(tempDir)}`);
       assert.deepEqual(prLabelsArg, ['gd-dev-content']);
+      assert.match(prBodyArg, /Closes https:\/\/github\.com\/GoogleChrome\/modern-web-guidance-src\/issues\/88/);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
-  it('updates an existing PR description and labels when a PR already exists', async () => {
+  it('updates an existing PR description (including Closes link) and removes rerun labels when a PR already exists', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-pr-test-'));
     const resultsDir = path.join(tempDir, 'test-app-results');
     fs.mkdirSync(resultsDir, { recursive: true });
@@ -213,20 +250,27 @@ describe('runDevPr', () => {
       '# Report\n## Target: `test-app`\n#### Actionable Recommendations:\n- `targets/app/grader.ts`: Fix grader\n'
     );
 
+    const guideRelPath = path.relative(rootDir, tempDir);
+    devPrCli.listGapIssues = () => [
+      { number: 99, ...buildIssue({ kind: 'missing-evals', guidePath: guideRelPath, guideName: path.basename(tempDir) }) },
+    ];
+
     let prUpdated = false;
     let updatedPrNumber = 0;
+    let updatedBody = '';
     let addedLabels: DevPrLabel[] = [];
-    let removedLabels: DevPrLabel[] = [];
+    let removedLabels: string[] = [];
 
     devPrCli.viewOpenPr = () => ({
       number: 42,
       url: 'https://github.com/GoogleChrome/modern-web-guidance-src/pull/42',
-      labels: [{ name: 'gd-dev-content' }, { name: 'category:css' }],
+      labels: [{ name: 'gd-dev-content' }, { name: 'needs-eval-gen' }, { name: 'category:css' }],
     });
 
-    devPrCli.editPr = (prNumber, _bodyPath, addLabels, removeLabels) => {
+    devPrCli.editPr = (prNumber, bodyPath, addLabels, removeLabels) => {
       prUpdated = true;
       updatedPrNumber = prNumber;
+      updatedBody = fs.readFileSync(bodyPath, 'utf-8');
       addedLabels = addLabels;
       removedLabels = removeLabels;
     };
@@ -237,7 +281,8 @@ describe('runDevPr', () => {
       assert.equal(prUpdated, true);
       assert.equal(updatedPrNumber, 42);
       assert.deepEqual(addedLabels, ['gd-dev-eval']);
-      assert.deepEqual(removedLabels, ['gd-dev-content']);
+      assert.deepEqual(removedLabels, ['gd-dev-content', 'needs-eval-gen']);
+      assert.match(updatedBody, /Closes https:\/\/github\.com\/GoogleChrome\/modern-web-guidance-src\/issues\/99/);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
