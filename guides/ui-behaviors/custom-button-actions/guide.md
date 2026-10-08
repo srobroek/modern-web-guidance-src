@@ -15,7 +15,7 @@ For custom, application-specific actions, you can define your own command names.
 1.  **Define the target element**: Identify the element that will respond to the action. If it doesn’t have a unique `id`, add one.
 2.  **Configure the invoker button**: Use the `commandfor` attribute to point to the target's `id`, and the `command` attribute to specify the custom command name (prefixed with `--`).
 3.  **Handle the command event**: Attach a `command` event listener directly on the target element. The event object contains a `command` property and a `target` property (referring to the element identified by `commandfor`).
-4.  **Handle aria states**: Custom commands do not have inherent semantics, and you must handle states like `aria-pressed` or `aria-expanded`.
+4.  **Handle aria states**: Custom commands do not have inherent semantics, and you must handle states like `aria-pressed` or `aria-expanded`. Give toggle buttons their initial state in the markup (for example `aria-pressed="false"`) so assistive technology announces them as toggles before the first click.
 
 ## Example: Custom Animation Controls
 
@@ -27,11 +27,12 @@ For custom, application-specific actions, you can define your own command names.
 
 <!-- Buttons declaratively linked to the target element -->
 <!-- Each button sends a unique custom command starting with '--' -->
-<button commandfor="action-target" command="--spin">
+<!-- Toggle buttons start with aria-pressed="false" -->
+<button commandfor="action-target" command="--spin" aria-pressed="false">
   Spin
 </button>
 
-<button commandfor="action-target" command="--grow">
+<button commandfor="action-target" command="--grow" aria-pressed="false">
   Grow
 </button>
 
@@ -131,49 +132,44 @@ document.getElementById('action-target').addEventListener('command', (event) => 
 
 If you prefer not to use a polyfill, you can use a combination of **event delegation** to dispatch events and a **command registry** to handle the actions. This is a common architectural pattern in traditional JavaScript development that remains highly efficient and scalable.
 
-```javascript
-// 1. **Optional:** Define a registry of requested actions for cleaner logic
-const commandRegistry = {
-  '--spin': (target) => target.classList.toggle('is-spun'),
-  '--grow': (target) => target.classList.toggle('is-grown'),
-  '--reset': (target) => target.classList.remove('is-spun', 'is-grown'),
-};
+Install the delegated click listener **only** when native support is missing. In a supporting browser the native `command` event already fires on every click, so an ungated listener dispatches a second one and every toggle runs twice and cancels itself out.
 
-// 2. If CommandEvent doesn't exist, we assume no native support and provide the fallback
-if (!globalThis.CommandEvent) {
-  globalThis.CommandEvent = class CommandEvent extends Event {
+```javascript
+// 1. Reuse the source-aware commandRegistry from the example above, so
+//    the native and fallback paths update the same classes and ARIA states.
+
+// 2. The fallback: dispatch command events manually, only without native support
+if (!('commandForElement' in HTMLButtonElement.prototype)) {
+  const CommandEventImpl = globalThis.CommandEvent ?? class CommandEvent extends Event {
     constructor(type, { source, command, ...options } = {}) {
       super(type, options);
       this.source = source;
       this.command = command;
     }
-  }
-}
+  };
 
-// 3. The fallback: Dispatch events manually if native support is missing
   document.addEventListener('click', (event) => {
-    const button = event.composedPath().find((el) => el.matches?.("button[commandfor]"));
+    const button = event.composedPath().find((el) => el.matches?.('button[commandfor]'));
     if (!button) return;
 
     const target = document.getElementById(button.getAttribute('commandfor'));
     const command = button.getAttribute('command');
 
     if (target && command) {
-      target.dispatchEvent(new CommandEvent('command', { 
-        command, 
+      target.dispatchEvent(new CommandEventImpl('command', {
+        command,
         source: button,
       }));
     }
   });
+}
 
-// 4. **Mandatory:** Register the unified listener directly on the target element
+// 3. **Mandatory:** The same listener on the target element handles both paths
 document.getElementById('action-target').addEventListener('command', (event) => {
-  const command = event.command;
-  const target = event.target;
-  const action = commandRegistry[command];
+  const action = commandRegistry[event.command];
 
   if (action) {
-    action(target);
+    action(event.target, event.source);
   }
- });
+});
 ```
