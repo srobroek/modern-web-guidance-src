@@ -31,10 +31,10 @@ These core themes should guide your approach to privacy in web development:
 Reducing the amount of data collected and strictly limiting its use is the most effective way to protect user privacy.
 
 #### DOs:
-*   **DO** collect data at the lowest granularity necessary. If you only need to know if a user is in a certain age bracket (e.g., 18-34), ask for the bracket, not the exact date of birth.
+*   **DO** collect data at the lowest granularity necessary (generalization or bucketing). If you only need to know if a user is in a certain age bracket (e.g., 18-34), ask for the bracket, not the exact date of birth.
 *   **DO** provide guest checkout options for e-commerce to avoid forced account creation, which reduces data collection and cart abandonment.
 *   **DO** delete data as soon as the purpose for its collection has been fulfilled.
-*   **DO** use techniques like "fuzzing" or adding noise to data (Differential Privacy) when gathering aggregate statistics.
+*   **DO** add calibrated statistical noise (differential privacy) when publishing or sharing aggregate statistics. Bucketing alone is not differential privacy: it coarsens each record but gives no formal guarantee against re-identification.
 
 #### DON'Ts:
 *   **DON'T** collect data speculatively "just in case" it might be useful in the future.
@@ -42,7 +42,7 @@ Reducing the amount of data collected and strictly limiting its use is the most 
 
 #### Code Examples:
 
-**Fuzzing Data Collection (HTML/JS)**
+**Coarse-Grained Data Collection (HTML)**
 Instead of asking for exact age:
 ```html
 <label for="age-bracket">Age Bracket:</label>
@@ -60,8 +60,8 @@ Build trust by being open about your data practices and providing easy ways for 
 #### DOs:
 *   **DO** provide inline explanations for why data is requested. Place the explanation directly next to the input field.
 *   **DO** provide a clear reason and context *before* requesting powerful browser permissions (e.g., camera, location).
-*   **DO** consider using the **Page Embedded Permission Control (PEPC)** `<permission>` element, if supported, to make permission requests declarative, user-initiated, and act as data mediators.
-*   **DO** use the `Clear-Site-Data` header when a user logs out to ensure no lingering data remains in the browser.
+*   **DO** consider a capability-specific permission element, such as the `<geolocation>` element (Chrome 144+), where supported. It makes the request declarative and user-initiated, and it returns the data itself instead of only a permission state. (The generic `<permission type="…">` element was an origin trial that ended in Chrome 143.)
+*   **DO** use the `Clear-Site-Data` header when a user logs out to ensure no lingering data remains in the browser. List the data types you need to clear; reserve `"*"` for when you intend origin-wide clearing.
 *   **DO** make it as easy to opt-out or delete an account as it was to sign up.
 
 #### DON'Ts:
@@ -85,20 +85,36 @@ Build trust by being open about your data practices and providing easy ways for 
 **Clear-Site-Data on Logout (HTTP Response)**
 ```http
 HTTP/1.1 200 OK
-Clear-Site-Data: "*"
+Clear-Site-Data: "cache", "cookies", "storage"
 ```
-*Note: If clearing the cache, avoid sending this on the main navigation page to prevent blocking UI rendering on slow devices; trigger it via a subresource.*
+*Note: `"cookies"` (and `"*"`, which includes it) clears cookies for the entire registrable domain, including subdomains, so it also signs the user out of sibling apps such as `app.example.com` and `shop.example.com`. `"*"` covers every data type, including any added to the header in the future. If clearing the cache, avoid sending this on the main navigation page to prevent blocking UI rendering on slow devices; trigger it via a subresource.*
 
-**Page Embedded Permission Control (HTML)**
+**Declarative Location Request with Fallback (HTML)**
 ```html
-<!-- Declarative permission element with fallback -->
-<permission type="geolocation" onpromptdismiss="updateMap()">
-  <!-- Fallback for unsupported browsers -->
-  <button onclick="navigator.geolocation.getCurrentPosition(updateMap)">
-    Use my location
-  </button>
-</permission>
+<geolocation id="locate">
+  <!-- Browsers that support <geolocation> do not render this fallback button -->
+  <button type="button" id="locate-fallback">Use my location</button>
+</geolocation>
+
+<script>
+  // 'location' fires with either a position or an error; never treat it as success blindly.
+  document.getElementById('locate').addEventListener('location', (event) => {
+    const { position, error } = event.target;
+    if (position) {
+      updateMap(position);
+    } else if (error) {
+      showLocationError(error);
+    }
+  });
+
+  // Fallback: the Geolocation API passes a GeolocationPosition to the same updateMap().
+  document.getElementById('locate-fallback').addEventListener('click', () => {
+    navigator.geolocation.getCurrentPosition(updateMap, showLocationError);
+  });
+</script>
 ```
+
+Dismissing the prompt fires `promptdismiss`, not `location`, so `updateMap()` runs only when a position actually arrives.
 
 ### 3. Security and Data Handling for Privacy
  
@@ -132,7 +148,7 @@ Third-party scripts and resources are a common source of privacy leaks. You are 
 
 #### DOs:
 *   **DO** conduct regular technical audits of network requests using DevTools or HAR files to identify what data third parties are collecting.
-*   **DO** use the **Façade Pattern** for heavy embeds (like YouTube or TikTok). Display a static thumbnail and load the interactive iframe only after the user clicks.
+*   **DO** use the **Façade Pattern** for heavy embeds (like YouTube or TikTok). Display a self-hosted static preview image and load the interactive iframe only after the user activates a real `<button>`. Loading the preview from the third party's image server (for example, `img.youtube.com`) sends the user's IP address and referrer to that party before they have opted in.
 *   **DO** use privacy-preserving options for embeds when available (e.g., `youtube-nocookie.com`).
 *   **DO** replace heavy social sharing SDKs with simple, static HTML links that do not track users.
 *   **DO** use the **Federated Credential Management API (FedCM)** to mediate "Sign-In" flows natively, preventing IdP tracking of Relying Parties prior to user consent.
@@ -155,14 +171,23 @@ Third-party scripts and resources are a common source of privacy leaks. You are 
 **Video Façade Pattern (HTML/JS)**
 ```html
 <div id="video-container" data-video-id="abc123">
-  <img src="https://img.youtube.com/vi/abc123/maxresdefault.jpg" alt="Play Video" id="play-btn">
+  <!-- A native button is focusable and keyboard-operable; the preview image is self-hosted -->
+  <button type="button" id="play-btn">
+    <img src="/images/video-preview-abc123.webp" alt="" width="640" height="360">
+    Play video: Product tour
+  </button>
 </div>
 
 <script>
-document.getElementById('play-btn').addEventListener('click', function() {
+document.getElementById('play-btn').addEventListener('click', () => {
   const container = document.getElementById('video-container');
-  const videoId = container.dataset.videoId;
-  container.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1" allowfullscreen></iframe>`;
+  const iframe = document.createElement('iframe');
+  iframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(container.dataset.videoId)}?autoplay=1`;
+  iframe.title = 'Product tour';
+  iframe.allowFullscreen = true;
+  iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
+  container.replaceChildren(iframe);
+  iframe.focus();
 });
 </script>
 ```

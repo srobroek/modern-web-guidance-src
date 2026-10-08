@@ -1,7 +1,7 @@
 - The implementation MUST collect user data at the lowest granularity necessary (such as requesting an age range or bracket via `<select>` instead of a full date of birth when exact age is unneeded).
 - The implementation MUST provide a guest or anonymous option for primary user flows rather than forcing account creation.
 - The implementation MUST provide inline explanatory text adjacent to optional or sensitive data inputs (linked via `aria-describedby` or a nearby disclosure) explaining why the data is requested.
-- The implementation MUST provide clear user context before invoking browser permission prompts or use the declarative `<permission>` element with a standard `<button>` fallback.
+- The implementation MUST provide clear user context before invoking browser permission prompts or use a declarative capability element (such as `<geolocation>`) with a standard `<button>` fallback.
 - The implementation MUST send the `Clear-Site-Data` HTTP header (such as `Clear-Site-Data: "cookies", "storage", "cache"` or `"*"`) on logout endpoints to clear lingering client-side data.
 - The implementation MUST provide a clear, self-service UI control allowing users to export or delete their stored profile data.
 - The implementation MUST scrub or mask Personally Identifiable Information (PII) such as emails, phone numbers, and tokens before outputting to logs or analytics payloads.
