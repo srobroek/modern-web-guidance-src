@@ -68,7 +68,7 @@ Use the `@container scroll-state(...)` query to apply styles when the header is 
 }
 ```
 
-**Tip:** You can also use logical properties like `stuck: inset-block-start` or `stuck: inset-inline-start` to better support internationalization (i18n) and right-to-left (RTL) layouts by querying flow-relative edges rather than physical ones.
+**Tip:** You can also use the logical keywords `stuck: block-start`, `stuck: block-end`, `stuck: inline-start`, or `stuck: inline-end` to better support internationalization (i18n) and right-to-left (RTL) layouts by querying flow-relative edges rather than physical ones. Do not write `inset-block-start` or `inset-inline-start` here: those are property names, not valid `stuck` values, and a query using them never matches.
 
 ### Notes on Dimension Changes
 
@@ -106,7 +106,9 @@ If stickiness is not essential, but `position: sticky` without different styling
 ```
 **Tip:** If your "stuck" styling requires a different background color for readability, consider setting your layout up so that the default styling works everywhere (Progressive Enhancement). If you must use a fallback, you can gate the `position: sticky` behaviour itself inside an `@supports (container-type: scroll-state)` query.
 
-If the visual transformation is absolutely critical to the design (e.g., the stuck state introduces a background or compaction without which the content is unreadable), you can implement a robust JavaScript fallback using `IntersectionObserver`. You must duplicate your CSS styles under an `.is-stuck` class. The following generic polyfill checks `getComputedStyle` to traverse up and find the correct scroll container (defaulting to the viewport), matching the behavior of `@container scroll-state(stuck: top)`:
+If the visual transformation is absolutely critical to the design (e.g., the stuck state introduces a background or compaction without which the content is unreadable), you can implement a JavaScript fallback using `IntersectionObserver`. You must duplicate your CSS styles under an `.is-stuck` class. The following generic polyfill checks `getComputedStyle` to traverse up and find the correct scroll container (defaulting to the viewport) and approximates `@container scroll-state(stuck: top)`.
+
+It is an approximation: the observer treats any header whose top edge is clipped by the shrunken root margin as stuck. A header that already sits flush against the top of its scroller on load (for example, the first header on the page) is therefore marked `.is-stuck` before any scrolling, while the native query does not match until the sticky offset is actually applied. If that matters, observe a zero-height sentinel element placed immediately before the sticky header instead, and treat the header as stuck when the sentinel has scrolled out above the root.
 
 ```javascript
 function getScrollParent(node) {
@@ -143,4 +145,4 @@ document.querySelectorAll('.sticky-container').forEach(container => {
 });
 ```
 
-*Note: This generic IntersectionObserver pattern can also be used as a polyfill for the `scroll-state(scrollable)` query.*
+*Note: This generic IntersectionObserver pattern can also be used as an approximate polyfill for the `scroll-state(scrollable)` query.*
