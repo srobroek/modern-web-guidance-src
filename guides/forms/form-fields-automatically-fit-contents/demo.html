@@ -128,12 +128,17 @@
   </form>
 
   <script>
-    // Only attach the fallback event listeners if field-sizing is unsupported
+    // Only attach the fallback event listeners if field-sizing is unsupported.
+    // Mirror the value (or the placeholder while empty) on load, on input, and
+    // after reset: reset fires before the controls reset and fires no input event.
     if (!CSS.supports('field-sizing', 'content')) {
       document.querySelectorAll('.growable-textarea > textarea').forEach(textarea => {
-        textarea.addEventListener('input', () => {
-          textarea.parentNode.dataset.replicatedValue = textarea.value;
-        });
+        const sync = () => {
+          textarea.parentNode.dataset.replicatedValue = textarea.value || textarea.placeholder;
+        };
+        sync();
+        textarea.addEventListener('input', sync);
+        textarea.form?.addEventListener('reset', () => setTimeout(sync));
       });
     }
   </script>

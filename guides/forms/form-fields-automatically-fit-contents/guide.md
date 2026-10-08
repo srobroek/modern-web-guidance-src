@@ -83,13 +83,18 @@ If dynamically growing fields are absolutely required for older browsers, you mu
 </div>
 ```
 
+The mirror must always hold the visible text, because the textarea's `overflow: hidden` clips anything the mirror does not stretch the grid for. Sync it on load (for prefilled content), on every `input`, and after a form reset: the `reset` event fires before the controls are reset, and resetting fires no `input` event. While the textarea is empty, mirror its placeholder so the placeholder is not clipped either.
+
 ```javascript
 // Only attach the fallback event listeners if field-sizing is unsupported
 if (!CSS.supports('field-sizing', 'content')) {
   document.querySelectorAll('.growable-textarea > textarea').forEach(textarea => {
-    textarea.addEventListener('input', () => {
-      textarea.parentNode.dataset.replicatedValue = textarea.value;
-    });
+    const sync = () => {
+      textarea.parentNode.dataset.replicatedValue = textarea.value || textarea.placeholder;
+    };
+    sync();
+    textarea.addEventListener('input', sync);
+    textarea.form?.addEventListener('reset', () => setTimeout(sync));
   });
 }
 ```
