@@ -3,3 +3,5 @@
 - The application uses a polyfill to support task prioritization in browsers that do not support the Scheduler API natively.
 - The application conditionally loads the polyfill only when needed.
 - The application ensures that tasks are executed in priority order (higher priority tasks before lower priority ones).
+- The polyfill is pinned to an exact version: either installed as a project dependency, or loaded from a versioned CDN URL with an `integrity` attribute and `crossorigin`.
+- If the polyfill fails to load (an `onerror` handler or a rejected import), the application still runs its tasks without prioritization instead of dropping them.
