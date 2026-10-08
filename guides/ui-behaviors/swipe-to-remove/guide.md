@@ -212,6 +212,14 @@ The placement, sizing, and motion below are a **starting suggestion**, not a req
 .SwipeableList-item.is-activating[data-swipe-direction="right"]::before {
   visibility: hidden;
 }
+
+/* Reduced motion: no icon pop or fade transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .SwipeableList-item.is-initialized::before,
+  .SwipeableList-item.is-initialized::after {
+    transition: none;
+  }
+}
 ```
 
 ### Step 4: Detect the commit gesture with `IntersectionObserver`
@@ -225,6 +233,8 @@ Two more concerns are handled here:
 
 - **Lazy per-item setup**: a single outer `IntersectionObserver` rooted at the viewport drives setup and the start/stop of the inner swipe observers. Items only get wired up the first time they scroll into view, and items that scroll off-screen have their swipe observer paused. This keeps the active observer count bounded and avoids reading layout-dependent values (like `clientWidth`) before the item has been rendered.
 - **Dynamic items**: real lists grow over time (initial render, infinite scroll, server push). A `MutationObserver` on the `<ul>` registers any newly added items with the outer observer.
+
+**MANDATORY**: Ship this together with the `scroll-initial-target` fallback from "Fallback strategies" below. In browsers without `scroll-initial-target`, each track starts scrolled to its left spacer, so the content's first intersection ratio is `0`, below `commitThreshold`, and the observer below immediately removes every row it sees.
 
 ```js
 // Per-item handles. Populated when an item is first lazily wired up; read by
@@ -259,6 +269,10 @@ function setupItem(item) {
   // appear). Done *before* the inner observer is attached so the snap
   // container exists by the time intersection callbacks can fire.
   item.classList.add('is-initialized');
+
+  // Make the track keyboard-focusable so the arrow keys can swipe it. Not every
+  // browser makes a scroll container focusable on its own.
+  track.tabIndex = 0;
 
   // Tunable thresholds. `activateThreshold` is the visual feedback point
   // (icon pops). `commitThreshold` is the point of no return: once the
@@ -315,7 +329,9 @@ function setupItem(item) {
 }
 
 async function removeItem(item, content, direction, entry) {
-  const opts = { duration: 300, easing: 'ease', fill: 'forwards' };
+  // Reduced motion: collapse the row instantly instead of animating it away.
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const opts = { duration: reduceMotion ? 0 : 300, easing: 'ease', fill: 'forwards' };
 
   const rect = entry.boundingClientRect;
   // Content's pixel offset from the track's left edge.
@@ -445,6 +461,42 @@ To make the two actions visually distinct, hoist a color and icon for each direc
 
 With this setup, the spacers no longer need their own background-color (the track's gradient handles the reveal), so you can drop the `background-color` rule on `.SwipeableList-track::before, ::after` from Step 2 if you're using this dual-action variant.
 
+### Step 6: Provide a non-gesture alternative
+
+Swiping is hard or impossible for some users (switch access, screen readers, some pointer devices), so give each row a visible control that runs the same action. A button inside the content reuses `removeItem()` from Step 4; it only needs the content's and the track's boxes, which the commit handler would otherwise take from the `IntersectionObserver` entry.
+
+```html
+<div class="SwipeableList-content">
+  Item One
+  <!-- The accessible name starts with the visible label, so voice control users can say "Remove". -->
+  <button type="button" class="SwipeableList-action" aria-label="Remove Item One">Remove</button>
+</div>
+```
+
+```js
+list.addEventListener('click', (event) => {
+  const button = event.target.closest('.SwipeableList-action');
+  if (!button) return;
+
+  const item = button.closest('.SwipeableList-item');
+  const track = item.querySelector('.SwipeableList-track');
+  const content = item.querySelector('.SwipeableList-content');
+
+  // Stop swipe detection for this row, as the commit branch in Step 4 does
+  // (also unobserve the track from `trackResizeObserver` if you use the
+  // scroll-initial-target fallback).
+  swipeObservers.get(item)?.observer.disconnect();
+  viewportObserver.unobserve(item);
+
+  removeItem(item, content, 'left', {
+    boundingClientRect: content.getBoundingClientRect(),
+    rootBounds: track.getBoundingClientRect(),
+  });
+});
+```
+
+Run it inside `setupList(list)` so each list gets one delegated listener.
+
 ## Best practices and pitfalls
 
 - **DO** use `mandatory` snap, not `proximity`. With `proximity`, the row can rest partially scrolled, leaving the action background half-visible.
@@ -452,10 +504,11 @@ With this setup, the spacers no longer need their own background-color (the trac
 - **DO** commit at a threshold *before* the snap settles (e.g., `commitThreshold ≈ 0.2`) rather than waiting for the content to be fully off-screen. This lets the remove animation start during the gesture, which feels significantly more responsive than waiting for the snap to land.
 - **DO** drive per-item setup from an outer viewport `IntersectionObserver` rather than wiring every item up at page load. This avoids reading layout-dependent values (`clientWidth`, etc.) before items have been rendered, and keeps the active observer count proportional to what the user can actually see.
 - **DO** use a `MutationObserver` on the list when items are added dynamically (initial render after data loads, infinite scroll, server push). Without it, items appended after page load won't get wired up.
-- **DO NOT** rely on `pointerdown`/`pointermove`/`pointerup` to drive a manual transform. You'll lose momentum, snap-back, keyboard accessibility, and reduced-motion handling that the browser gives you for free.
+- **DO NOT** rely on `pointerdown`/`pointermove`/`pointerup` to drive a manual transform. You'll lose the momentum, snap-back, and keyboard scrolling that the browser gives you for free.
 - **DO** confirm destructive actions when appropriate. For "remove", consider showing an undo toast after the swipe completes; the gesture is fast and easy to trigger by accident.
-- **DO** ensure the scroll track is focusable, keyboard accessible, and that there is a visual focus affordance.
-- **DO** provide accessible alternatives for any relevant actions triggered by the swipe (e.g., a visible button, context menu, or edit mode).
+- **DO** ensure the scroll track is focusable, keyboard accessible, and that there is a visual focus affordance. Step 4 sets `tabIndex = 0` on the track because not every browser makes scroll containers keyboard-focusable on its own; once focused, the arrow keys scroll it like a swipe.
+- **DO** provide accessible alternatives for any relevant actions triggered by the swipe (e.g., a visible button, context menu, or edit mode). Step 6 shows a button.
+- **DO** respect `prefers-reduced-motion`. Scroll snapping is the user's own gesture, but the removal animation and the icon transitions are not: Steps 3 and 4 turn them off for users who ask for reduced motion.
 
 ## Fallback strategies
 
@@ -475,7 +528,7 @@ All newer features that are used are either not core to the experience or have r
 
 {{ FEATURE_FALLBACKS("overscroll-behavior") }}
 
-No fallback is needed for this use case. Although `overscroll-behavior` has an interop issue that manifests on containers without scrollable overflow, the track here is always horizontally scrollable (three full-width columns inside a 100%-width container), so the property behaves consistently across browsers and the swipe gesture is reliably contained.
+No fallback is needed for this use case. The status above counts only versions that also apply `overscroll-behavior` to scroll containers *without* scrollable overflow. Chrome 63+, Firefox 59+, and Safari 16+ already apply it to containers *with* scrollable overflow, and the track here is always horizontally scrollable (three full-width columns inside a 100%-width container), so the property behaves consistently across browsers and the swipe gesture is reliably contained.
 
 ### Fallback for `scrollbar-width`
 

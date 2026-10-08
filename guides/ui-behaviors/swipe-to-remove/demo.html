@@ -92,6 +92,14 @@
         visibility: hidden;
       }
 
+      /* Reduced motion: no icon pop or fade transitions. */
+      @media (prefers-reduced-motion: reduce) {
+        .SwipeableList-item.is-initialized::before,
+        .SwipeableList-item.is-initialized::after {
+          transition: none;
+        }
+      }
+
       .SwipeableList-item.is-initialized .SwipeableList-track {
         display: grid;
         grid-template-columns: 100% 100% 100%;
@@ -196,7 +204,9 @@
       // In a real application, you could perform a different action based on
       // the direction passed here (e.g., archive vs. snooze). For this demo,
       // we remove the item from the list regardless of direction.
-      const opts = {duration: 300, easing: 'ease', fill: 'forwards'};
+      // Reduced motion: collapse the row instantly instead of animating it away.
+      const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const opts = {duration: reduceMotion ? 0 : 300, easing: 'ease', fill: 'forwards'};
       const rect = entry.boundingClientRect;
       // Content's pixel offset from the track's left edge.
       const x = rect.x - entry.rootBounds.x;
@@ -233,6 +243,10 @@
       // Upgrade the row into "swipeable" mode. The track becomes a snap
       // container and the action icons appear.
       item.classList.add('is-initialized');
+
+      // Make the track keyboard-focusable so the arrow keys can swipe it. Not
+      // every browser makes a scroll container focusable on its own.
+      track.tabIndex = 0;
 
       // Polyfill `scroll-initial-target: nearest`: scroll the content column
       // into view. This MUST happen AFTER `is-initialized` (so the track is
