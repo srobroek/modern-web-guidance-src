@@ -9,6 +9,8 @@ web-feature-ids:
 
 The Declarative API transforms standard HTML `<form>` elements into WebMCP tools via attributes. The browser synthesizes a JSON Schema from the form inputs and handles agent interactions.
 
+WebMCP is an early preview: this guide follows the WebMCP Draft Community Group Report (2 October 2026), and attribute names, events, and pseudo-classes may still change.
+
 ## Form Attributes
 
 *   `toolname`: Unique name for the tool.
@@ -42,8 +44,9 @@ When an agent submits the form, the `SubmitEvent` includes `agentInvoked` (boole
 document.querySelector('form').addEventListener('submit', (event) => {
   event.preventDefault();
 
-  // Validate the form
-  const formValidationErrors = myFormIsValid();
+  // Validate the form. getFormValidationErrors() is your own helper that
+  // returns an array of { field, message } objects (empty when valid).
+  const formValidationErrors = getFormValidationErrors(event.target);
 
   if (formValidationErrors.length > 0) {
     if (event.agentInvoked) {
@@ -103,7 +106,13 @@ form:tool-form-active {
 
 button:tool-submit-active {
   outline: 2px dashed red;
-  animation: pulse 2s infinite;
+}
+
+/* Only animate for users who have not asked for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  button:tool-submit-active {
+    animation: pulse 2s infinite;
+  }
 }
 ```
 

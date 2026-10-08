@@ -4,3 +4,5 @@
 - The `inputSchema` is a valid JSON Schema object with property descriptions.
 - An `AbortController` is created and its signal is passed to `registerTool`.
 - The `execute` function is asynchronous if it performs any async operations.
+- Agent-supplied input used in a URL path is validated against an expected format and encoded with `encodeURIComponent()` before the request.
+- Tool return values are data or structured error payloads, not natural-language instructions to the agent.
