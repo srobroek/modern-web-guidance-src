@@ -46,11 +46,21 @@ The following examples demonstrate dynamic container layout controls, showcasing
  * Keeps base level 1 fallback clipping roughly at the inner padding box.
  */
 .nested-curve-parent {
+  /* The geometry the concentric clip is derived from: 24px outer radius minus 12px padding = 12px inner radius */
+  border-radius: 24px;
+  padding: 12px;
+  background: #f4f4f4;
   /* Level 1 Fallback: clips child roughly at the padding box */
   overflow: hidden;
 }
 
-/* Inner footer component with 12px rounded to visually demonstrate automatic concentric corner clipping */
+.nested-curve-parent img {
+  display: block;
+  inline-size: 100%;
+  object-fit: cover;
+}
+
+/* Inner footer component: no radius of its own; the content-box clip rounds its outer corners to 12px */
 .nested-curve-footer {
   background: #111;
   color: #fff;
@@ -109,77 +119,16 @@ The following examples demonstrate dynamic container layout controls, showcasing
 - **DO** apply `overflow: clip` on target elements when utilizing `overflow-clip-margin`, as setting `overflow` strictly to `clip` is **mandatory** on standard block layout containers to activate custom or inner curved clip margins.
 - **DO** set `overflow-clip-margin: content-box` on padded containers with rounded corners to automatically clip unrounded internal child elements into mathematically perfect nested border curves without manual padding subtraction logic.
 - **DO** configure `overflow-clip-margin` with a specified length offset when applying external visual effects (like `filter: drop-shadow()`) to prevent sharp bounding box truncation without altering or expanding layout geometry.
-- **DO NOT** apply `overflow: clip` if the container requires programmatic scroll manipulation via JavaScript or serves as the immediate layout context for `position: sticky` elements, as `clip` completely disables scrolling.
+- **DO NOT** apply `overflow: clip` to an element that must scroll, by the user or programmatically via JavaScript, as `clip` completely disables scrolling.
+- **DO** prefer `overflow: clip` over `overflow: hidden` on ancestors of `position: sticky` elements. `hidden` makes the ancestor a scroll container, so the sticky element sticks to that non-scrolling box and never sticks while the page scrolls; `clip` does not create a scroll container, so the sticky element keeps using the nearest real scroller.
 
 ## Fallback Strategies
 
 {{ BASELINE_STATUS("overflow-clip") }}
 {{ BASELINE_STATUS("overflow-clip-margin") }}
 
-For target environments lacking native support for `overflow: clip` or `overflow-clip-margin`, progressive enhancement fallback strategies depend directly on the visual intent:
+Chrome and Edge support `overflow-clip-margin` (lengths since 90, box-edge keywords since 104) but only when **both** axes use `overflow: clip`; the status above treats that partial implementation as unsupported. Use the `overflow: clip` shorthand, as the examples do, rather than `overflow-x: clip` alone. Safari does not support `overflow-clip-margin`.
+
+For target environments lacking native support for `overflow: clip` or `overflow-clip-margin`, progressive enhancement fallback strategies depend directly on the visual intent, as the examples above show:
 - Fallback to `overflow: hidden` as the base experience to guarantee core boundaries are maintained.
 - Fallback to `overflow: visible` on elements where drop-shadows or external corner badges must not be truncated.
-
-### Complete Progressive Enhancement Fallback Implementation
-
-```html
-<!-- 1. Nested rounded edges fallback -->
-<div class="demo-container-fallback">
-  <img src="example.jpg" alt="Nested Curve Fallback">
-  <div class="demo-footer-fallback">Footer</div>
-</div>
-
-<!-- 2. Child element shadow bleed fallback -->
-<div class="demo-safety-parent">
-  <h4>Container</h4>
-  <p>Inner boundaries contained.</p>
-  <button class="demo-glowing-btn">Submit</button>
-</div>
-```
-
-```css
-/**
- * 1. Block Container Nested Curves Fallback
- * Keeps base level 1 fallback clipping roughly at the inner padding box.
- */
-.demo-container-fallback {  
-  /* Level 1 Fallback: clip child roughly at padding box */
-  overflow: hidden;
-}
-
-.demo-container-fallback img {
-  object-fit: cover;
-  display: block;
-}
-
-@supports (overflow-clip-margin: content-box) {
-  .demo-container-fallback {
-    overflow: clip;
-    overflow-clip-margin: content-box;
-  }
-}
-
-/**
- * 2. Child Element Shadow Bleed Fallback
- * Base fallback clips content using overflow: hidden, abruptly truncating child element shadows.
- */
-.demo-safety-parent {  
-  /* Level 1 Fallback */
-  overflow: hidden;
-}
-
-.demo-glowing-btn {
-  display: block;
-  width: 100%;
-  padding: 6px 12px;
-  background: #e52e71;
-  box-shadow: 0 8px 13px rgba(229, 46, 113, 0.65);
-}
-
-@supports (overflow-clip-margin: 15px) {
-  .demo-safety-parent {
-    overflow: clip;
-    overflow-clip-margin: 15px;
-  }
-}
-```
