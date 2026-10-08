@@ -9,7 +9,7 @@ web-feature-ids:
 
 ## The Problem
 
-Displaying validation errors the moment a user focuses on a field and starts typing is premature and distracting. For example, as a user types an email address (e.g., "user@gm") or a password with complex requirements, the field is technically invalid until completion. Standard `:invalid` styling results in an error state appearing immediately, frustrating the user.
+Displaying validation errors the moment a user focuses on a field and starts typing is premature and distracting. For example, as a user types an email address (e.g., "user@gm") or a password that has a minimum length, the field is technically invalid until completion. Standard `:invalid` styling results in an error state appearing immediately, frustrating the user.
 
 ## The Solution
 
@@ -17,7 +17,7 @@ The `:user-invalid` pseudo-class allows you to defer the error state until the u
 
 ### Implementation Strategy
 
-1.  **HTML Constraint**: DO use standard HTML5 attributes like `type="email"`, `pattern`, and `required` to trigger the browser's built-in validation logic.
+1.  **HTML Constraint**: DO use standard HTML5 attributes like `type="email"`, `minlength`, `pattern`, and `required` to trigger the browser's built-in validation logic.
 2.  **Visual Feedback**: DO use `:user-invalid` to apply error styling only after interaction.
 3.  **Positive Reinforcement**: DO optionally use `:user-valid` to give a green "success" indicator once the requirements are met.
 4.  **Graceful Recovery**: As soon as the user corrects the input to a valid format, `:user-invalid` stops matching, removing the error state immediately.
@@ -86,9 +86,9 @@ input:user-valid {
 }
 ```
 
-### Use Case 2: Password Complexity
+### Use Case 2: Password Requirements
 
-MANDATORY: Define the complexity rule using a Regex Lookahead pattern in the `pattern` attribute. The rules list is shown above the input to guide the user, and highlighted if there's an error.
+Express password rules with HTML constraints, and show them above the input. Use a minimum length (`minlength`), not composition rules: NIST SP 800-63B says verifiers SHALL NOT impose composition rules such as requiring mixtures of character types, and requires at least 15 characters for a password used on its own (8 when it is one factor of multi-factor authentication). A lookahead `pattern` that demands uppercase, digits and symbols rejects strong passphrases such as `correct horse battery staple`. Check new passwords against a list of known-compromised passwords on the server.
 
 ```html
 <form>
@@ -96,21 +96,17 @@ MANDATORY: Define the complexity rule using a Regex Lookahead pattern in the `pa
     <label for="password">New Password</label>
     <!-- MANDATORY: Place hints and rules above the input so mobile keyboards do not obscure them -->
     <ul id="password-rules" class="rules-list">
-      <li>At least 8 characters</li>
-      <li>One uppercase letter</li>
-      <li>One number</li>
-      <li>One special character</li>
+      <li>At least 15 characters</li>
+      <li>Spaces, symbols and any letters are allowed</li>
     </ul>
-    <!-- DO: Use pattern and minlength for complex password validation
-         DO: Match all constraints with lookaheads via pattern attribute
-     -->
+    <!-- DO: Use minlength for the length rule; the name attribute includes the value in form submission -->
     <input
       type="password"
       id="password"
+      name="password"
       autocomplete="new-password"
       required
-      pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).{8,}"
-      minlength="8"
+      minlength="15"
       aria-describedby="password-rules"
     >
   </div>
@@ -156,7 +152,7 @@ input:user-valid {
 1.  **Accessibility**:
     *   MANDATORY: Use `aria-describedby` to link the rules list to the input.
     *   DO NOT: Hide rules lists entirely until the input is valid; users need to know what to type!
-2.  **Pattern Attribute Limits**: MANDATORY: The `pattern` attribute performs a full match (implied `^...$`). Ensure your password regex accounts for the entire string.
+2.  **Pattern Attribute Limits**: When you do use `pattern` (for example, for a fixed-format code), it performs a full match (implied `^(?:...)$`, compiled with the `v` flag), so the regex must account for the entire string.
 3.  **Validation Strictness**: DO note that the browser's default `type="email"` validation is quite permissive (e.g., `user@localserver` might pass). If you need stricter validation, you may need to use a more robust validation library or a custom validation function alongside `type="email"`.
-4.  **Focus Management**: MANDATORY: If a user submits the form with an invalid field, the browser will automatically focus the first invalid field. Your `:user-invalid` styles will apply immediately because a submission attempt counts as an interaction.
+4.  **Focus Management**: If a user submits the form with an invalid field, the browser automatically focuses the first invalid field. Your `:user-invalid` styles apply immediately because a submission attempt counts as an interaction.
 5. **Consistent ARIA Experience**: {{ FEATURE("user-pseudos", "aria-invalid") }}

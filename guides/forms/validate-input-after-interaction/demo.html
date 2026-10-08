@@ -105,7 +105,7 @@
 <body>
 
   <h1>Validate Input After Interaction</h1>
-  <p>Uses <code>:user-invalid</code> to validate an email field and enforce password complexity without showing errors prematurely.</p>
+  <p>Uses <code>:user-invalid</code> to validate an email field and a minimum password length without showing errors prematurely.</p>
 
   <div style="margin-bottom: 1rem;">
     <label
@@ -132,18 +132,15 @@
       </div>
     </div>
 
-    <!-- Use Case 2: Password Complexity -->
+    <!-- Use Case 2: Password Requirements (length only; no composition rules) -->
     <div class="form-group">
       <label for="password">New Password</label>
       <ul id="password-rules" class="rules-list">
-        <li>At least 8 characters</li>
-        <li>One uppercase letter</li>
-        <li>One lowercase letter</li>
-        <li>One number</li>
-        <li>One special character</li>
+        <li>At least 15 characters</li>
+        <li>Spaces, symbols and any letters are allowed</li>
       </ul>
-      <input type="password" id="password" name="password" autocomplete="new-password" required minlength="8"
-        pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).{8,}" aria-describedby="password-rules">
+      <input type="password" id="password" name="password" autocomplete="new-password" required minlength="15"
+        aria-describedby="password-rules">
     </div>
 
     <div style="display: flex; gap: 1rem;">
