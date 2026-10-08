@@ -1,5 +1,7 @@
-- The implementation MUST capture high-frequency timestamps using `Temporal.Now.instant()`.
-- The implementation MUST sort events using the native `Temporal.Instant.compare(a, b)` method to ensure precise nanosecond-level ordering.
-- The implementation MUST NOT use standard `Date.now()` as the primary mechanism for event sorting if native `Temporal` resolution is required for disambiguation.
+- The implementation MUST capture event timestamps using `Temporal.Now.instant()`.
+- The implementation MUST order events with a logical clock (a Lamport counter or per-node sequence number), using the node ID as the tiebreaker, rather than using timestamps as the ordering key.
+- If events cross nodes, the logical clock MUST be attached to outgoing messages and advanced to at least the received value before recording the receive event.
+- The implementation MUST NOT treat `Temporal.Now.instant()` or `Date.now()` values as unique or as a reliable event order.
+- Delays computed with `Temporal.Instant.prototype.since()` MUST be presented as approximate wall-clock values; precise in-process durations use `performance.now()`.
 - The implementation MUST include explicit feature detection for `Temporal` support (e.g., `typeof Temporal !== 'undefined'`).
-- A fallback strategy MUST be provided for environments lacking native support, such as conditionally loading a polyfill (e.g., `@js-temporal/polyfill`). Because `@js-temporal/polyfill` does not auto-install globally, the implementation MUST ensure `Temporal` is available after loading (e.g., by assigning `globalThis.Temporal = module.Temporal`).
+- A fallback strategy MUST be provided for environments lacking native support, such as conditionally loading a polyfill pinned to an exact version (e.g., `@js-temporal/polyfill`). Because `@js-temporal/polyfill` does not auto-install globally, the implementation MUST ensure `Temporal` is available after loading (e.g., by assigning `globalThis.Temporal = module.Temporal`).

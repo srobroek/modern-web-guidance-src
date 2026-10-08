@@ -288,9 +288,11 @@
     <header>
       <h1>Sequence Distributed Events</h1>
       <p class="description">
-        Simulate high-frequency events across distributed nodes. Compare how millisecond resolution
-        (<code>Date.now()</code>) causes sorting collisions, while <code>Temporal.Instant</code> (nanosecond resolution)
-        maintains absolute chronological order.
+        Simulate high-frequency events across distributed nodes. <code>Date.now()</code> returns whole milliseconds.
+        <code>Temporal.Instant</code> stores nanoseconds, but browsers coarsen clock readings (Chrome rounds them to
+        0.1&nbsp;ms), so back-to-back events can share a timestamp in either column. Events are ordered by
+        <strong>Seq</strong>, a logical clock, and the timestamps are recorded for display and approximate
+        latency.
       </p>
     </header>
 
@@ -319,7 +321,7 @@
       <div>
         <strong style="color: var(--warning-text)">Timestamp Collision Detected!</strong><br>
         Multiple events share the exact same timestamp in <code>Date.now()</code>.
-        Their sorted order is unstable, leading to potential data racing/out-of-order execution in traces.
+        Timestamps alone cannot order these events, so the tables order them by the Seq logical clock.
       </div>
     </div>
 
@@ -380,7 +382,8 @@
         simulateBtn.style.cursor = 'not-allowed';
 
         try {
-          const module = await import('https://esm.sh/@js-temporal/polyfill');
+          // Pin an exact polyfill version.
+          const module = await import('https://esm.sh/@js-temporal/polyfill@0.5.1');
           globalThis.Temporal = module.Temporal;
           
           if (unsupportedBanner) unsupportedBanner.style.display = 'none';
@@ -426,6 +429,7 @@
         for (let j = 0; j < 500; j++) { Math.random(); }
 
         events.push({
+          // Logical clock: this single-process simulation numbers events in the order they happen.
           id: i + 1,
           nodeId,
           eventType,
@@ -440,13 +444,13 @@
     function renderDashboard(events) {
       const shuffledEvents = [...events].sort(() => Math.random() - 0.5);
 
-      // 1. Sort for Date.now() view
-      const dateSorted = [...shuffledEvents].sort((a, b) => a.dateMs - b.dateMs);
+      // 1. Order by the logical clock (Seq), never by timestamp.
+      //    Timestamps are only displayed, to reveal collisions.
+      const bySequence = (a, b) => a.id - b.id;
+      const dateSorted = [...shuffledEvents].sort(bySequence);
 
-      // 2. Sort for Temporal view
-      const temporalSorted = [...shuffledEvents].sort((a, b) =>
-        Temporal.Instant.compare(a.temporalInstant, b.temporalInstant)
-      );
+      // 2. Same order for the Temporal view
+      const temporalSorted = [...shuffledEvents].sort(bySequence);
 
       // 3. Count Collisions in Date.now() sorted array
       let collisionsCount = 0;
@@ -498,7 +502,7 @@
           <div>
             <strong style="color: var(--warning-text)">Timestamp Collision Detected!</strong><br>
             Multiple events share the exact same timestamp ${sourceText}.
-            Their sorted order is unstable, leading to potential data racing/out-of-order execution in traces.
+            Timestamps alone cannot order these events, so the tables order them by the Seq logical clock.
           </div>
         `;
       } else {
