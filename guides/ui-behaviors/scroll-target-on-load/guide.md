@@ -37,7 +37,7 @@ In this example, a feed starts scrolled to a specific "featured" item rather tha
 - **DO NOT** use this if you need a smooth "scrolling" animation on load; this property is discrete and sets the position instantly during the layout phase.
 - **DO NOT** set `scroll-initial-target` on multiple elements within the same scrollable container. If multiple elements specify `scroll-initial-target: nearest`, the browser selects the one that appears first in the DOM tree order.
 - **DO** provide dimensions for media. Since the scroll position is calculated during initial layout, ensure images or videos have `aspect-ratio` or fixed `height`/`width` to prevent the target from shifting after the media loads.
-- **DO** account for the **Precedence Hierarchy**: A URL fragment (e.g., `example.com/#top`) and the container-level `scroll-start` property both take precedence over `scroll-initial-target`.
+- **DO** account for the **Precedence Hierarchy**: A URL fragment (e.g., `example.com/#top`) takes precedence over `scroll-initial-target`.
 
 ## Fallback Strategy
 
@@ -45,18 +45,34 @@ In this example, a feed starts scrolled to a specific "featured" item rather tha
 
 For browsers that do not yet support the API, use a JavaScript fallback. Use the `DOMContentLoaded` event to ensure the browser scrolls the element into view as soon as the HTML parsing completes, providing a faster experience than waiting for all images and resources to load. Alternatively, placing the script at the end of the `<body>` element is also acceptable and avoids the need for an event listener.
 
+Make the fallback behave like the native property:
+
+- Skip it when the URL fragment points to an element, so fragment navigation keeps precedence.
+- Align the target to the start of its scroll container (the native property uses `block: "start"`, `inline: "nearest"`).
+- Only scroll the feed. `scrollIntoView()` also scrolls every scrollable ancestor, including the page, while the native property only sets the initial position of the target's nearest scroll container, so restore the page's scroll position afterwards. Drop the restore when the page itself (`<html>`) is the target's scroll container.
+
 ```javascript
 /**
  * Progressive Enhancement Fallback
  */
 document.addEventListener("DOMContentLoaded", () => {
   // Check for native CSS support
-  if (!CSS.supports("scroll-initial-target", "nearest")) {
-    const feedTarget = document.querySelector(".item.target");
-    if (feedTarget) {
-      // 'block: center' ensures the featured media is centered in view
-      feedTarget.scrollIntoView({ behavior: "instant", block: "center" });
-    }
-  }
+  if (CSS.supports("scroll-initial-target", "nearest")) return;
+
+  // A URL fragment takes precedence over the initial scroll target.
+  const hash = location.hash.slice(1);
+  let fragment = hash;
+  try { fragment = decodeURIComponent(hash); } catch { /* keep the raw value */ }
+  if (fragment && document.getElementById(fragment)) return;
+
+  const feedTarget = document.querySelector(".item.target");
+  if (!feedTarget) return;
+
+  const { scrollX, scrollY } = window;
+  // Match the native alignment within the feed.
+  feedTarget.scrollIntoView({ behavior: "instant", block: "start", inline: "nearest" });
+  // scrollIntoView() also scrolled the page; put it back where it was.
+  // (Remove this line when the page itself is the feed's scroll container.)
+  window.scrollTo({ left: scrollX, top: scrollY, behavior: "instant" });
 });
 ```

@@ -220,12 +220,22 @@
   <script>
     // Fallback strategy for browsers that don't support scroll-initial-target
     document.addEventListener("DOMContentLoaded", () => {
-      if (!CSS.supports('scroll-initial-target', 'nearest')) {
-        const feedTarget = document.querySelector('.feed-container .item.target');
-        if (feedTarget) {
-          feedTarget.scrollIntoView({ behavior: 'instant', block: 'center' });
-        }
-      }
+      if (CSS.supports('scroll-initial-target', 'nearest')) return;
+
+      // A URL fragment takes precedence over the initial scroll target.
+      const hash = location.hash.slice(1);
+      let fragment = hash;
+      try { fragment = decodeURIComponent(hash); } catch { /* keep the raw value */ }
+      if (fragment && document.getElementById(fragment)) return;
+
+      const feedTarget = document.querySelector('.feed-container .item.target');
+      if (!feedTarget) return;
+
+      const { scrollX, scrollY } = window;
+      // Match the native alignment within the feed.
+      feedTarget.scrollIntoView({ behavior: 'instant', block: 'start', inline: 'nearest' });
+      // scrollIntoView() also scrolled the page; put it back where it was.
+      window.scrollTo({ left: scrollX, top: scrollY, behavior: 'instant' });
     });
   </script>
 </body>

@@ -5,3 +5,4 @@
 - A progressive enhancement JavaScript fallback MUST be included. It MUST evaluate native CSS capability using `!CSS.supports("scroll-initial-target", "nearest")` before executing any scroll logic.
 - The fallback script MUST execute as soon as possible after the scroll container HTML is declared, and no later than `DOMContentLoaded`.
 - Inside the fallback check, the script MUST scroll to the `.target` element using `element.scrollIntoView({ behavior: 'instant' })` to mimic the native discrete jump.
+- The fallback script SHOULD skip scrolling when the URL fragment identifies an element, so fragment navigation keeps precedence as it does natively.
