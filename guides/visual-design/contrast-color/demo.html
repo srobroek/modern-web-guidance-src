@@ -126,7 +126,8 @@
           content: "";
           position: absolute;
           inset: 0;
-          background-color: rgb(0 0 0 / 0.4);
+          /* >= 0.54 alpha keeps white text at 4.5:1 even on white (0.4 gives 2.85:1) */
+          background-color: rgb(0 0 0 / 0.55);
           z-index: 0;
         }
         .fallback-overlay span {

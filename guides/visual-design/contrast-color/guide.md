@@ -58,12 +58,14 @@ DO NOT: Hard-code a separate text color for each interaction state when the back
 
 To support browsers without `contrast-color()`, you must provide a fallback. If the background color is known and fixed, use a hard-coded contrasting color. For dynamic backgrounds where the color is unknown, choose a strategy from the table below based on your UI requirements and browser support targets.
 
+The fallbacks approximate `contrast-color()`. Apart from a black overlay of at least 0.54 alpha under white text, none of them guarantees 4.5:1 for normal-size text, so measure the resulting text and background colors for every background your palette or users can produce.
+
 | Strategy | Best For... | Considerations |
 | :--- | :--- | :--- |
-| **Relative Color Syntax** | Automated, high-quality CSS-only contrast calculation. | Highest quality CSS-only fallback. |
-| **Text Shadow** | Quick readability boost on any background. | Can look "dirty" or "glowy"; may not fit all designs. |
-| **Text Stroke** | Preserving font weight while ensuring edge contrast. | Use `paint-order` to avoid thinning letterforms, if available. |
-| **Translucent Overlay** | Ensuring a minimum contrast area behind the text. | Changes the look of the background color under the text, requires a separate text element. |
+| **Relative Color Syntax** | Automated, high-quality CSS-only contrast calculation. | Highest quality CSS-only fallback. The lightness threshold below guarantees only 3:1 (large text); measure body-text pairs. |
+| **Text Shadow** | Quick readability boost on any background. | Can look "dirty" or "glowy"; may not fit all designs. Contrast depends on blur, offset and color; measure it. |
+| **Text Stroke** | Preserving font weight while ensuring edge contrast. | Use `paint-order` to avoid thinning letterforms, if available. Contrast depends on stroke width; measure it. |
+| **Translucent Overlay** | Darkening any background enough for white text. | Changes the look of the background color under the text, requires a separate text element. Needs a black overlay of at least 0.54 alpha for 4.5:1. |
 | **SVG Filters** | Reactive contrast that updates as the background changes. | Requires a separate text element; hacky implementation. |
 
 ### Recommended: Relative Color Syntax (RCS)
@@ -75,7 +77,10 @@ For browsers that support it, RCS provides the most robust automated fallback fo
 ```css
 @supports (color: oklch(from red l c h)) {
   .badge {
-    /* Highest threshold that passes WCAG. Higher values may be more legible. */
+    /* 0.623 keeps text at 3:1 or more on every sRGB background (WCAG AA for
+       large text only). No OKLCH lightness threshold reaches 4.5:1 for every
+       color: the best, about 0.575, still drops to about 4.1:1. Higher values
+       may look more legible but fail WCAG on more colors. */
     --threshold: 0.623;
     --l: max(0, sign(var(--threshold) - l));
     color: oklch(from var(--badge-bg) var(--l) 0 h);
@@ -116,6 +121,8 @@ DO: Select the fallback that best matches your design constraints if RCS is not 
 
 #### Option 3: Translucent background overlay
 
+White text over a black overlay is weakest on a white background. With 0.4 alpha that composites to `#999` and gives only 2.85:1; 0.54 alpha or more gives 4.5:1 on any opaque background.
+
 ```css
 .badge--overlay {
   position: relative;
@@ -126,7 +133,7 @@ DO: Select the fallback that best matches your design constraints if RCS is not 
   content: "";
   position: absolute;
   inset: 0;
-  background-color: rgb(0 0 0 / 0.4);
+  background-color: rgb(0 0 0 / 0.55); /* >= 0.54 for 4.5:1 with white text */
   z-index: 0;
 }
 .badge--overlay span {

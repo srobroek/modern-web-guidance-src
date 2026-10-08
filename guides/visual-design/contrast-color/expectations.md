@@ -4,4 +4,5 @@
 - If the browser does not support `contrast-color()`, the element still has a readable computed text color (not the browser default).
 - For dynamic backgrounds in non-supporting browsers, the element has a secondary readability aid such as a `text-shadow`, a `-webkit-text-stroke`, or a translucent background overlay.
 - If a text stroke is used as a fallback, the `paint-order` property is set to `stroke fill` or `markers stroke fill`.
+- If a translucent black overlay is used under white text as a fallback, its alpha is at least 0.54, so the text keeps 4.5:1 contrast even on a white background.
 - The `contrast-color()` function is not used to define the `background-color` property of any element.
