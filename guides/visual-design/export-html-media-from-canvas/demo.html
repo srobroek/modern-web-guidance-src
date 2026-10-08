@@ -42,6 +42,18 @@
         const download_btn = document.getElementById('download_btn');
         const output_img = document.getElementById('output_img');
 
+        const supportsHtmlInCanvas = 'requestPaint' in HTMLCanvasElement.prototype;
+
+        if (!supportsHtmlInCanvas) {
+            // Fallback: without HTML-in-Canvas the canvas children are not
+            // rendered. Show the input as regular DOM and say that export is
+            // unavailable (or export with a DOM-rasterizing library instead).
+            canvas.replaceWith(export_element);
+            export_btn.disabled = true;
+            export_btn.textContent = 'Image export is not supported in this browser';
+            output_img.hidden = true;
+        }
+
         canvas.onpaint = (event) => {
             ctx.reset();
             // Draw the element into the canvas
@@ -69,7 +81,9 @@
             const dpc = entry.devicePixelContentBoxSize;
             canvas.width = dpc ? dpc[0].inlineSize : Math.round(entry.contentRect.width * window.devicePixelRatio);
             canvas.height = dpc ? dpc[0].blockSize : Math.round(entry.contentRect.height * window.devicePixelRatio);
-            canvas.requestPaint();
+            if (supportsHtmlInCanvas) {
+                canvas.requestPaint();
+            }
         });
         const supportsDevicePixelContentBox = 
             typeof ResizeObserverEntry !== 'undefined' && 

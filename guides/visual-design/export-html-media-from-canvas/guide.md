@@ -11,13 +11,14 @@ Web applications frequently need to capture and export rich HTML content—such 
 
 ## How to implement
 
-1. Check if HTML-in-Canvas is supported in the browser:
+1. Check if HTML-in-Canvas is supported in the browser, and keep a working path for when it is not (see [Fallback strategies](#fallback-strategies)). Without support, children of a `<canvas>` are fallback content and are not rendered, so the fallback branch must show the HTML some other way and either export it differently or say that export is unavailable:
 
-```
-if ('requestPaint' in HTMLCanvasElement.prototype) {
+```js
+const supportsHtmlInCanvas = 'requestPaint' in HTMLCanvasElement.prototype;
+if (supportsHtmlInCanvas) {
   // Use HTML in Canvas API
 } else {
-  // Use fallback strategy
+  // Use fallback strategy, e.g. canvas.after(htmlContent)
 }
 ```
 
@@ -63,9 +64,11 @@ canvas.onpaint = () => {
 };
 ```
 
-- In WebGL context, use the `texElementImage2D` method:
+- In WebGL context, use the `texElementImage2D` method. `gl.RGBA8` is a sized internal format, which WebGL 2 textures accept but WebGL 1 textures do not, so get the context with `getContext('webgl2')`:
 
 ```js
+const gl = canvas.getContext('webgl2');
+
 canvas.onpaint = () => {
   if (gl.texElementImage2D) {
     try {
@@ -77,19 +80,19 @@ canvas.onpaint = () => {
 };
 ```
 
-- In WebGPU context, use the `copyElementImageToTexture` method:
+- In WebGPU context, use the `copyElementImageToTexture` method. The destination texture needs `COPY_DST` and `RENDER_ATTACHMENT` usage:
 
 ```js
 canvas.onpaint = () => {
-  if (root.device.queue.copyElementImageToTexture) {
+  if (device.queue.copyElementImageToTexture) {
     try {
-      const sourceDict = { source: valueElement };
+      const sourceDict = { source: uiElement };
       const destDict = {
         destination: { texture: targetTexture },
-        width: 512,
-        height: 128,
+        width: targetTexture.width,
+        height: targetTexture.height,
       };
-      root.device.queue.copyElementImageToTexture(sourceDict, destDict);
+      device.queue.copyElementImageToTexture(sourceDict, destDict);
     } catch (err) {
       console.error('copyElementImageToTexture copy failed:', err);
     }
@@ -130,65 +133,9 @@ canvas.onpaint = () => {
 };
 ```
 
-- For the 3D case with WebGL or WebGPU, the browser needs to map from the 3D coordinate space into the CSS coordinate space using a viewport transform. To facilitate this, do the following:
-  - Convert WebGL MVP Matrix to DOM Matrix.
-  - Normalize the HTML element. HTML elements are sized in pixels (for example, 200px wide). WebGL, however, usually treats objects as "unit squares", for example, ranging from 0 to 1. If you don't normalize, your 200px button will look 200 times larger.
-  - Map to the canvas viewport. This step is the "re-scaling" phase: it stretches that unit-space math back out to match the actual pixel dimensions of your `<canvas>` element on the screen. It also flips the Y-axis, because in WebGL, up is positive, but in CSS, down is positive.
-  - Calculate the final transform. Multiply the matrices in order: Viewport * MVP * Normalization. Combining them into one final transform produces a "map" that tells the browser exactly where that HTML element layer should sit to align with the 3D drawing.
-  - Apply the transform to the HTML element. This moves the HTML element layer to sit directly on top of its rendered pixels. This ensures that when a user clicks a button or selects text, they are actually hitting the real HTML element.
+- For the 3D case with WebGL or WebGPU, compute the CSS transform from your model-view-projection matrix with `canvas.getElementTransform()`, as shown step by step in {{ GUIDE_REF("interactive-content-in-3d-scenes") }}. That guide also covers the `is2D` workaround needed in Chromium 148 and earlier.
 
-  ```js
-  if (canvas.getElementTransform) {
-    // 1. Convert WebGL MVP Matrix to DOM Matrix
-    const mvpDOM = new DOMMatrix(Array.from(htmlElementMVP));
-
-    // 2. Normalize the HTML element (Canvas Grid pixels -> WebGL Model Space)
-    const dprX = canvas.width / canvas.clientWidth;
-    const dprY = canvas.height / canvas.clientHeight;
-    const gridWidth = targetHTMLElement.offsetWidth * dprX;
-    const gridHeight = targetHTMLElement.offsetHeight * dprY;
-
-    const toGLModel = new DOMMatrix()
-      // Scale pixels to 1 unit, flip Y (as in CSS it points down, and in WebGL it points up)
-      .scale(1 / gridWidth, -1 / gridHeight, 1 / gridHeight)
-      // Center the origin: (0,0) becomes (-width/2, -height/2) before scaling
-      .translate(-gridWidth / 2, -gridHeight / 2);
-
-    // 3. Map to the canvas viewport
-    const clipToCanvasViewport = new DOMMatrix()
-      // Move center (0,0) to center of canvas
-      .translate(canvas.width / 2, canvas.height / 2)
-      // Scale normalized clip (-1..1) to viewport size
-      .scale(canvas.width / 2, -canvas.height / 2, canvas.height / 2);
-
-    // 4. Multiply: (Clip -> Pixels) * (MVP) * (pixels -> unit square)
-    const screenSpaceTransform = clipToCanvasViewport
-      .multiply(mvpDOM)
-      .multiply(toGLModel);
-
-    // 5. Apply to the transform
-    const computedTransform = canvas.getElementTransform(
-      targetHTMLElement,
-      screenSpaceTransform,
-    );
-    targetHTMLElement.style.transform = computedTransform.toString();
-  }
-  ```
-
-6. [Troubleshooting] If the developer is experiencing a mismatch in the DOM logical layout in 3D even after applying the CSS transform from step 5, check if the developer is experiencing the issue in Chromium 148 or earlier. If that's the case, check if `transform.is2D` is correctly set to false for a 3D DOMMatrix. If not, re-initialize the DOMMatrix which corrects `is2D` to be false before applying the transform to the target HTML element. This issue is fixed in Chromium 149+, and if the developer is experiencing it in newer Chromium versions, the is2D value is not the cause:
-
-```js
-if (transform.is2D) {
-  // Workaround for Chromium bug https://crbug.com/512171941
-  // affecting Chrome versions under 149 where `transform.is2D`
-  // is incorrectly true for a 3D DOMMatrix. The assignment
-  // below re-initializes the DOMMatrix which corrects is2D to be false.
-  transform = DOMMatrix.fromFloat64Array(transform.toFloat64Array());
-}
-targetHTMLElement.style.transform = computedTransform.toString();
-```
-
-7. Use regular canvas export methods like `toDataURL()`, `toBlob()`, or `captureStream()`. The exported data will include the rendered HTML content.
+6. Use regular canvas export methods like `toDataURL()`, `toBlob()`, or `captureStream()`. The exported data will include the rendered HTML content.
 
 ## Example code
 
@@ -202,39 +149,49 @@ targetHTMLElement.style.transform = computedTransform.toString();
 
     <script>
         const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
         const element = document.getElementById('element');
         const download = document.getElementById('download');
 
-        canvas.onpaint = (event) => {
-            ctx.reset();
-            // Draw the element into the canvas
-            const transform = ctx.drawElementImage(element, 10, 10);
-            // Synchronize DOM position for hit testing (typing)
-            element.style.transform = transform.toString();
-        };
+        if (!('requestPaint' in HTMLCanvasElement.prototype)) {
+            // Fallback: without HTML-in-Canvas the canvas children are not
+            // rendered. Show the input as regular DOM, and say that export is
+            // unavailable (or export with a DOM-rasterizing library instead).
+            canvas.replaceWith(element);
+            download.disabled = true;
+            download.textContent = 'Image export is not supported in this browser';
+        } else {
+            const ctx = canvas.getContext('2d');
 
-        download.onclick = () => {
-            // Export the canvas content as an image
-            const dataURL = canvas.toDataURL('image/png');
-            const link = document.createElement('a');
-            link.download = 'exported-canvas.png';
-            link.href = dataURL;
-            link.click();
-        };
+            canvas.onpaint = (event) => {
+                ctx.reset();
+                // Draw the element into the canvas
+                const transform = ctx.drawElementImage(element, 10, 10);
+                // Synchronize DOM position for hit testing (typing)
+                element.style.transform = transform.toString();
+            };
 
-        // Re-initialize canvas size on screen resize
-        const observer = new ResizeObserver(([entry]) => {
-            const dpc = entry.devicePixelContentBoxSize;
-            canvas.width = dpc ? dpc[0].inlineSize : Math.round(entry.contentRect.width * window.devicePixelRatio);
-            canvas.height = dpc ? dpc[0].blockSize : Math.round(entry.contentRect.height * window.devicePixelRatio);
-            canvas.requestPaint();
-        });
-        const supportsDevicePixelContentBox = 
-            typeof ResizeObserverEntry !== 'undefined' && 
-            'devicePixelContentBoxSize' in ResizeObserverEntry.prototype;
-        const options = supportsDevicePixelContentBox ? { box: 'device-pixel-content-box' } : {};
-        observer.observe(canvas, options);
+            download.onclick = () => {
+                // Export the canvas content as an image
+                const dataURL = canvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.download = 'exported-canvas.png';
+                link.href = dataURL;
+                link.click();
+            };
+
+            // Re-initialize canvas size on screen resize
+            const observer = new ResizeObserver(([entry]) => {
+                const dpc = entry.devicePixelContentBoxSize;
+                canvas.width = dpc ? dpc[0].inlineSize : Math.round(entry.contentRect.width * window.devicePixelRatio);
+                canvas.height = dpc ? dpc[0].blockSize : Math.round(entry.contentRect.height * window.devicePixelRatio);
+                canvas.requestPaint();
+            });
+            const supportsDevicePixelContentBox = 
+                typeof ResizeObserverEntry !== 'undefined' && 
+                'devicePixelContentBoxSize' in ResizeObserverEntry.prototype;
+            const options = supportsDevicePixelContentBox ? { box: 'device-pixel-content-box' } : {};
+            observer.observe(canvas, options);
+        }
     </script>
 </body>
 ```
@@ -254,10 +211,10 @@ targetHTMLElement.style.transform = computedTransform.toString();
 
 {{ BASELINE_STATUS("canvas-html") }}
 
-The HTML-in-Canvas API is not currently supported in all modern browsers, thus a fallback strategy is typically required. However, given the improved performance benefits of this API, HTML-in-Canvas should be used if the browser supports it.
+HTML-in-Canvas is experimental. The explainer lists only a Chromium implementation, behind the `chrome://flags/#canvas-draw-element` flag; an origin trial ran in Chrome 148 to 150. The API is still changing: the current explainer replaces `layoutsubtree` with `content="drawable"` and renames the WebGL and WebGPU methods (`texElementSubImage2D()`, `drawElementImageToTexture()`). This guide shows the origin-trial API, so check the [explainer](https://github.com/WICG/html-in-canvas) before you ship.
 
-For the use case where HTML content needs to be exported from a canvas, use libraries like `html2canvas`, `dom-to-image`, or `snapdom`. 
+Treat HTML-in-Canvas as a progressive enhancement. Without support, the canvas children are fallback content and are not rendered, so the fallback branch MUST keep the content visible and usable; a warning alone, shown after the content has vanished into the canvas, is not enough. Then pick an export path:
 
-To capture HTML interactions frame by frame, for example, for streaming, capture DOM mutations using libraries like `rrweb`. 
-
-Alternatively, implement a warning that HTML media export is not supported in the browser because it doesn't support HTML-in-Canvas.
+- For the use case where HTML content needs to be exported from a canvas, use libraries like `html2canvas`, `dom-to-image`, or `snapdom`, which rebuild an image from the DOM and do not match native rendering exactly.
+- To capture HTML interactions frame by frame, for example, for streaming, capture DOM mutations using libraries like `rrweb`.
+- If neither is acceptable, keep the HTML visible as regular DOM and tell the user that export is not available in this browser, as the example above does.
