@@ -17,13 +17,13 @@ By combining `:has()` with `:user-invalid`, we can declaratively style any ances
 
 1.  **Selector**: Use `.parent:has(:user-invalid)` to target the container.
 2.  **Scope**: Be specific to avoid performance issues. Target `.field-group` rather than `body`.
-3.  **Fallback**: Requires JS to toggle classes on the parent if `:has()` is not supported.
+3.  **Fallback**: Requires JS to toggle classes on the parent if either `:has()` or `:user-invalid` is not supported; the native rule needs both.
 
 ## Implementation Guide
 
 ### 1. HTML Structure
 ```html
-<form>
+<form id="profile-form">
   <div class="card-section">
     <div class="header">
       <h3>Profile Settings</h3>
@@ -66,7 +66,7 @@ By combining `:has()` with `:user-invalid`, we can declaratively style any ances
 {{ BASELINE_STATUS("user-pseudos") }}
 
 ### CSS for Fallback
-We use a class `.has-error` on the parent to mimic the `:has()` behavior.
+We use a class `.has-error-fallback` on the parent to mimic the `:has()` behavior. Keep it as a separate rule: in a browser that lacks `:has()` or `:user-invalid`, the native selector is invalid and its whole rule is dropped.
 
 ```css
 /* Native */
@@ -85,39 +85,39 @@ We use a class `.has-error` on the parent to mimic the `:has()` behavior.
 {{ FEATURE("user-pseudos", "javascript-fallback")}}
 
 ```js
-// 1. Initialize the generic fallback
-const form = document.querySelector('#demo-form');
-UserInvalidFallback.init(form);
+// 1. Initialize the generic :user-invalid fallback (a no-op where :user-invalid is supported)
+const profileForm = document.querySelector('#profile-form');
+UserInvalidFallback.init(profileForm);
 
-// 2. Add specialized "parent styling" logic (Separate from fallback)
-// Listen for changes to form validity after interaction
-form.addEventListener('blur', (e) => {
-  if (!e.target.matches('input, select, textarea')) return;
+// 2. Add specialized "parent styling" logic, needed whenever the native
+//    .card-section:has(:user-invalid) rule cannot match
+const supportsHas = CSS.supports('selector(:has(*))');
+const supportsUserInvalid = CSS.supports('selector(:user-invalid)');
 
-  // Find the container we want to style (sync with CSS)
-  const container = e.target.closest('.card-section');
-  if (!container) return;
+if (!supportsHas || !supportsUserInvalid) {
+  // Detect invalid fields natively where possible, else via the fallback class
+  const invalidSelector = supportsUserInvalid ? ':user-invalid' : '.user-invalid-fallback';
 
-  // Check if ANY fallbacked input in this container is invalid
-  const hasError = container.querySelector('.user-invalid-fallback');
-  container.classList.toggle('has-error-fallback', !!hasError);
-}, true); // Capture phase to ensure we run after the fallback's blur listener
+  const syncContainer = (field) => {
+    const container = field.closest?.('.card-section');
+    if (!container) return;
+    container.classList.toggle('has-error-fallback', !!container.querySelector(invalidSelector));
+  };
 
-// Also handle input events for immediate cleanup
-form.addEventListener('input', (e) => {
-  const container = e.target.closest('.card-section');
-  if (container) {
-    const hasError = container.querySelector('.user-invalid-fallback');
-    container.classList.toggle('has-error-fallback', !!hasError);
-  }
-});
+  // Registered after the fallback's listeners, so its classes are already updated.
+  // `blur` and `invalid` do not bubble: listen in the capture phase.
+  profileForm.addEventListener('blur', (e) => syncContainer(e.target), true);
+  profileForm.addEventListener('invalid', (e) => syncContainer(e.target), true);
+  profileForm.addEventListener('input', (e) => syncContainer(e.target));
+  profileForm.addEventListener('change', (e) => syncContainer(e.target));
 
-// Handle form resets
-form.addEventListener('reset', () => {
-  form.querySelectorAll('.has-error-fallback').forEach(el => {
-    el.classList.remove('has-error-fallback');
+  // Handle form resets
+  profileForm.addEventListener('reset', () => {
+    profileForm.querySelectorAll('.has-error-fallback').forEach((el) => {
+      el.classList.remove('has-error-fallback');
+    });
   });
-});
+}
 ```
 
 ## Other Considerations
