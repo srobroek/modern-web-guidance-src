@@ -13,7 +13,12 @@ To move an element while preserving its state, use the `moveBefore()` API. This 
 
 ### Moving an element with state
 
-Use `moveBefore()` exactly as you would use `insertBefore()`. It requires two arguments: the node to move, and a reference node to insert before (or `null` to append to the end of the new parent).
+Call `moveBefore()` with the same arguments as `insertBefore()`: the node to move, and a reference node to insert before (or `null` to append to the end of the new parent). Unlike `insertBefore()`, it only performs a state-preserving move and throws a `HierarchyRequestError` `DOMException` instead of falling back to remove-and-insert when:
+
+- the node and the new parent do not share the same root (for example, a detached node moving into the document, a connected node moving into a detached subtree, or a move between documents);
+- the node is not an `Element` or `CharacterData` node (for example, a `DocumentFragment`).
+
+It also throws a `NotFoundError` if the reference node is not a child of the new parent. `MutationObserver`s still record the move as a removal plus an addition.
 
 ```javascript
 const newParent = document.getElementById('new-parent');
@@ -26,9 +31,9 @@ newParent.moveBefore(elementWithState, null);
 
 ### Moving custom elements (Web Components)
 
-If you are moving custom elements using `moveBefore()`, their `connectedCallback` and `disconnectedCallback` lifecycle methods will **not** be fired.
+If you are moving custom elements using `moveBefore()`, define a `connectedMoveCallback()` method on the custom element. When it exists (even empty), the browser calls it instead of `disconnectedCallback()` and `connectedCallback()`. When it does not exist, a `moveBefore()` move still runs `disconnectedCallback()` then `connectedCallback()`, exactly as a remove-and-insert would, so any teardown and setup logic in those callbacks runs again.
 
-If your custom element needs to perform specific logic when moved, implement the `connectedMoveCallback()` method inside the custom element definition.
+Use `connectedMoveCallback()` for logic that depends on the element's new DOM location.
 
 ```javascript
 class MyCustomElement extends HTMLElement {
@@ -47,18 +52,27 @@ class MyCustomElement extends HTMLElement {
 
 {{ BASELINE_STATUS("move-before") }}
 
-Since `moveBefore()` is a progressive enhancement, you MUST use feature detection before calling it, falling back to traditional `insertBefore()` or `appendChild()` operations for older browsers. 
+Since `moveBefore()` is a progressive enhancement, you MUST use feature detection before calling it, falling back to traditional `insertBefore()` or `appendChild()` operations for older browsers. When the move might cross documents or connect a detached node, also catch the `HierarchyRequestError` and fall back to `insertBefore()`, which handles those cases (with the usual state loss).
 
 ```javascript
 const targetParent = document.getElementById('target-container');
 const nodeToMove = document.getElementById('moving-element');
 
-// Check if moveBefore is supported on the Element prototype
-if ('moveBefore' in Element.prototype) {
-  targetParent.moveBefore(nodeToMove, null);
-} else {
-  // Fallback: traditional move. 
-  // Note: This WILL reset <iframe>, animation, and focus state in unsupported browsers.
-  targetParent.insertBefore(nodeToMove, null);
+function moveOrInsert(parent, node, referenceNode = null) {
+  // Check if moveBefore is supported on the Element prototype
+  if ('moveBefore' in Element.prototype) {
+    try {
+      parent.moveBefore(node, referenceNode);
+      return;
+    } catch (error) {
+      // A state-preserving move is impossible (cross-document, or connected <-> disconnected).
+      if (!(error instanceof DOMException && error.name === 'HierarchyRequestError')) throw error;
+    }
+  }
+  // Fallback: traditional move.
+  // Note: This WILL reset <iframe>, animation, and focus state.
+  parent.insertBefore(node, referenceNode);
 }
+
+moveOrInsert(targetParent, nodeToMove);
 ```
