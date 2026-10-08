@@ -161,7 +161,7 @@
   <script>
     // Fallback strategy for browsers that don't support scroll-initial-target
     document.addEventListener("DOMContentLoaded", () => {
-      if (!CSS.supports("scroll-initial-target", "nearest")) {
+      if (!CSS.supports("scroll-initial-target", "nearest") && !location.hash) {
         const targetContent = document.querySelector('.main-content.target');
         if (targetContent) {
           targetContent.scrollIntoView({ behavior: 'instant', block: 'start' });

@@ -63,22 +63,23 @@ To implement a pull-to-reveal pattern:
 - **DO NOT** confuse this with accessibility focus. This property only moves the **visual** viewport; it does not move the keyboard focus. You must manually manage `element.focus()` if the target is intended to be the starting point for keyboard users.
 - **DO NOT** use this if you need a smooth "scrolling" animation on load; this property is discrete and sets the position instantly during the layout phase.
 - **DO NOT** set `scroll-initial-target` on multiple elements within the same scrollable container. If multiple elements specify `scroll-initial-target: nearest`, the browser selects the one that appears first in the DOM tree order.
-- **DO** account for the **Precedence Hierarchy**: A URL fragment (e.g., `example.com/#top`) and the container-level `scroll-start` property both take precedence over `scroll-initial-target`.
+- **DO** account for the **Precedence Hierarchy**: `scroll-initial-target` only sets the *initial* scroll position. Navigating to a URL fragment (e.g., `example.com/#top`) is a later scrolling operation, so it takes precedence. The JavaScript fallback below MUST preserve that precedence.
 
 ## Fallback Strategy
 
 {{ BASELINE_STATUS("scroll-initial-target") }}
 
-For browsers that do not yet support the API, use a JavaScript fallback. Note that for pulling content to reveal, you want the main content to be bound to the `start` (top) of the container.
+For browsers that do not yet support the API, use a JavaScript fallback. Note that for pulling content to reveal, you want the main content to be bound to the `start` (top) of the container. The fallback MUST query the same element that carries `scroll-initial-target` in your CSS (`.main-content` in the example above), and MUST skip scrolling when the URL has a fragment, so it does not override fragment navigation.
 
 ```javascript
 /**
  * Progressive Enhancement Fallback
  */
 document.addEventListener("DOMContentLoaded", () => {
-  // Check for native CSS support
-  if (!CSS.supports("scroll-initial-target", "nearest")) {
-    const targetContent = document.querySelector('.main-content.target');
+  // Check for native CSS support, and let a URL fragment win like it does natively
+  if (!CSS.supports("scroll-initial-target", "nearest") && !location.hash) {
+    // MANDATORY: Same selector as the element with scroll-initial-target: nearest
+    const targetContent = document.querySelector('.main-content');
     if (targetContent) {
       // Use behavior: "instant" to mimic the native CSS behavior
       // 'block: start' should match your CSS 'scroll-snap-align' (or expected top position)

@@ -5,4 +5,5 @@
 - The implementation MUST NOT rely on JavaScript to calculate the initial scroll offset as its primary mechanism. The CSS property alone must manage the positioning to avoid a visible flash.
 - A progressive enhancement JavaScript fallback MUST be included. It MUST evaluate native CSS capability using `!CSS.supports("scroll-initial-target", "nearest")` before executing any scroll logic.
 - The fallback script MUST execute as soon as possible after the scroll container HTML is declared, and no later than `DOMContentLoaded`.
-- Inside the fallback check, the script MUST scroll to the main content element using `element.scrollIntoView({ behavior: 'instant', block: 'start' })` to precisely mimic the native `scroll-initial-target` position.
+- Inside the fallback check, the script MUST scroll to the main content element using `element.scrollIntoView({ behavior: 'instant', block: 'start' })` to precisely mimic the native `scroll-initial-target` position. The fallback MUST select the same element that has `scroll-initial-target: nearest` in the CSS.
+- The fallback MUST NOT scroll when the page was loaded with a URL fragment (`location.hash`), so fragment navigation keeps precedence as it does natively.
