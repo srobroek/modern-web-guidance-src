@@ -58,7 +58,7 @@ The start and end delay for an interest invoker (i.e. the element with the `inte
 
 {{ FEATURE_FALLBACKS("interest-invokers") }}
 
-Interest invokers must be conditionally polyfilled using the `interestfor` polyfill package from NPM. Do prefer bundling the polyfill over using the CDN.
+Action previews are a progressive enhancement: without interest invokers the buttons still work when clicked, and only the preview is missing. If the preview is decorative, ship no fallback. Add the `interestfor` polyfill package from NPM only when users need the preview before committing to the action, and then load it conditionally. Do prefer bundling the polyfill over using the CDN.
 
 ```html
 <script type="module">
