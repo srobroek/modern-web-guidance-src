@@ -14,10 +14,14 @@
         }
       }
 
-      header {
-        animation: shrink auto linear both;
-        animation-timeline: scroll(block root);
-        animation-range: 0px 150px;
+      @media (prefers-reduced-motion: no-preference) {
+        @supports ((animation-timeline: scroll()) and (animation-range: 0% 100%)) {
+          header {
+            animation: shrink auto linear both;
+            animation-timeline: scroll(block root);
+            animation-range: 0px 150px;
+          }
+        }
       }
     }
 

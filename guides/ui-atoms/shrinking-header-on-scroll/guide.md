@@ -39,16 +39,20 @@ Here’s how to create a shrinking header on scroll:
     }
     ```
 
-3.  **Apply the animation and scroll timeline:** Attach the animation to the header and use the `scroll()` function to link it to the document’s scroll position.
+3.  **Apply the animation and scroll timeline:** Attach the animation to the header and use the `scroll()` function to link it to the document’s scroll position. Wrap it in the feature query and reduced-motion query described under Best Practices. Without the `@supports` gate, a browser that understands `auto` durations but not scroll timelines runs the animation on the document timeline: with `both` fill it pins the header at its final height and overrides the inline height set by the JavaScript fallback.
 
     ```css
-    header {
-      animation: shrink auto linear both;
-      animation-timeline: scroll(block root);
+    @media (prefers-reduced-motion: no-preference) {
+      @supports ((animation-timeline: scroll()) and (animation-range: 0% 100%)) {
+        header {
+          animation: shrink auto linear both;
+          animation-timeline: scroll(block root);
+        }
+      }
     }
     ```
 
-4.  **Set the `animation-range`:** Use the `animation-range` property to specify the scroll distance over which the animation should occur. For example, to shrink the header over the first 150 pixels of scrolling, you would use `animation-range: 0px 150px;`.
+4.  **Set the `animation-range`:** Use the `animation-range` property to specify the scroll distance over which the animation should occur. For example, to shrink the header over the first 150 pixels of scrolling, you would use `animation-range: 0px 150px;`. Add it to the same gated `header` rule, after the `animation` shorthand.
 
     ```css
     header {
@@ -69,10 +73,14 @@ Here’s how to create a shrinking header on scroll:
   }
 }
 
-header {
-  animation: shrink auto linear both;
-  animation-timeline: scroll(block root);
-  animation-range: 0px 150px;
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((animation-timeline: scroll()) and (animation-range: 0% 100%)) {
+    header {
+      animation: shrink auto linear both;
+      animation-timeline: scroll(block root);
+      animation-range: 0px 150px;
+    }
+  }
 }
 ```
 
@@ -109,23 +117,28 @@ In browsers with built-in support for scroll-driven animations, ALWAYS use the n
 
 Note that not every effect can be recreated using the fallbacks approach.
 
-For this use-case specifically, the following script applies the fallback for browsers that do not support scroll-driven animations. It uses a scroll listener to track the scroll position of the document over a distance of `150px` and updates the header's height accordingly.
+For this use-case specifically, the following script applies the fallback for browsers that do not support scroll-driven animations. It uses a scroll listener to track the scroll position of the document over a distance of `150px` and updates the header's height accordingly. It uses the same feature test as the CSS `@supports` gate, so exactly one of the two paths runs, and it honours the same reduced-motion preference.
 
 ```js
 // Fallback for browsers that don't support scroll-driven animations
-if (!CSS.supports('(animation-timeline: scroll()) and (animation-range: 0% 100%)')) {
+if (
+  !CSS.supports('(animation-timeline: scroll()) and (animation-range: 0% 100%)') &&
+  matchMedia('(prefers-reduced-motion: no-preference)').matches
+) {
   const header = document.querySelector('header');
 
   const initialHeight = 200;
   const finalHeight = 50;
   const scrollDistance = 150;
 
-  window.addEventListener('scroll', () => {
-    const scrollY = window.scrollY;
-    const scrollPercent = Math.min(1, scrollY / scrollDistance);
+  const update = () => {
+    const scrollPercent = Math.min(1, window.scrollY / scrollDistance);
     const newHeight = initialHeight - (initialHeight - finalHeight) * scrollPercent;
 
     header.style.height = `${newHeight}px`;
-  });
+  };
+
+  update();
+  window.addEventListener('scroll', update, { passive: true });
 }
 ```
