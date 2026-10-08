@@ -14,10 +14,14 @@ You can also use this effect to add an animated dot to indicate the active tab i
 
 Create the underline using a `::before` pseudo-element on the `<ul>` that contains the `<li>` elements. **Using a pseudo-element is the preferred approach as it keeps the DOM clean and avoids adding extra elements for purely decorative effects.**
 
+**MANDATORY:** Only generate the pseudo-element where anchor positioning is supported, using the same feature query as the fallback below. Without `content`, the other `ul::before` rules create no box, so browsers without anchor positioning never draw a stray, unanchored bar.
+
 ```css
-ul::before {
-  /* Use a pseudo-element on the container to represent the animated indicator */
-  content: '';
+@supports (position-anchor: auto) {
+  ul::before {
+    /* Use a pseudo-element on the container to represent the animated indicator */
+    content: '';
+  }
 }
 ```
 
@@ -91,7 +95,7 @@ This is only a visual indicator, and must not be a replacement for setting the a
 
 ## Fallback strategies
 
-{{ FEATURE_FALLBACKS("anchor-positioning") }}
+{{ BASELINE_STATUS("anchor-positioning", "css.properties.anchor-name") }}
 
 If anchor positioning is not supported in the browser, use a `border-bottom` to add an underline. It will not be animated.
 
