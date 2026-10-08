@@ -34,9 +34,9 @@ To label an `<input>`, `<select>`, or `<textarea>`, use a `<label>`. Associate a
 
 Make it easy for users to enter data, by using the appropriate `<input>` element `<type>` attribute to provide the right keyboard on mobile and enable basic built-in validation by the browser.
 
-Always use `type="email"` for email addresses and `type="tel"` for phone numbers.
+Always use `type="email"` for email addresses and `type="tel"` for phone numbers. Use the `inputmode` attribute where necessary: `inputmode="numeric"` is ideal for PIN numbers.
 
-Every `<input>`, `<select>`, and `<textarea>` element SHOULD have an appropriate `autocomplete` attribute, to improve accessibility and help users avoid re-entering data.
+Every `<input>`, `<select>`, and `<textarea>` element SHOULD have an appropriate `autocomplete` attribute, so that browsers and password managers can store and fill the data.
 
 Username and email inputs hold identifiers, not prose. Add `spellcheck="false"` so the browser does not rewrite them into something the account does not match. `autocorrect` and `autocapitalize` are always disabled for `input type="email"`, but are required for non-email usernames.
 
@@ -58,15 +58,11 @@ For each step towards sign-up, use page headings and descriptive button values t
 
 Use the `enterkeyhint` attribute on form inputs to set the mobile keyboard enter key label. For example, use `enterkeyhint="previous"` and `enterkeyhint="next"` within a multi-page form, `enterkeyhint="done"` for the final input in the form, and `enterkeyhint="search"` for a search input.
 
-### Help users avoid re-entering sign-up data
-
-Make sure to add appropriate `autocomplete` values in sign-up forms.
-
-This enables browsers to help users by securely storing sign-up details and correctly entering form data. Without autocomplete, users may be more likely to keep a physical record of sign-up details, or store sign-up data insecurely on their device.
-
 ### Validate carefully
 
-Validate data entry both in realtime and before form submission. Use `type="email"` for email inputs — the browser will validate the format automatically. For passwords, use a `pattern` attribute to enforce strength requirements and provide clear error messages when validation fails. Add the `required` attribute to mandatory fields to prevent empty submissions.
+Validate data entry both in realtime and before form submission. Use `type="email"` for email inputs — the browser will validate the format automatically. Add the `required` attribute to both the email and password fields; browsers then prompt and set focus for missing data.
+
+For passwords, enforce only a minimum length with `minlength`, and don't set a `maxlength` below 64. NIST SP 800-63B requires at least 15 characters for a password used on its own and at least 8 when it is one factor of multi-factor authentication. Do not use `pattern` or script to require mixtures of character types: NIST says verifiers SHALL NOT impose composition rules, and such rules reject strong passphrases and browser-generated passwords. Check new passwords against a list of known-compromised passwords on the server instead.
 
 ### Put sign-up in its own `<form>` element
 
@@ -82,13 +78,7 @@ Some sites force users to enter emails or passwords twice. That might reduce err
 
 Passwords inputs should have `type="password"` to hide password text and help the browser understand that the input is for passwords. (Note that browsers use a variety of techniques to understand input roles and decide whether or not to offer to save passwords.)
 
-You should add a **Show password** toggle to enable users to check the text they've entered—and don't forget to add a **Forgot password** link.
-
-### Give mobile users the right keyboard
-
-Use `<input type="email">` to give mobile users an appropriate keyboard and enable basic built-in email address validation by the browser… no JavaScript required!
-
-If you need to use a telephone number instead of an email address, `<input type="tel">` enables a telephone keypad on mobile. You can also use the `inputmode` attribute where necessary: `inputmode="numeric"` is ideal for PIN numbers.
+You should add a **Show password** toggle to enable users to check the text they've entered.
 
 ### Prevent mobile keyboard from obstructing the Sign up button
 
@@ -96,14 +86,11 @@ If you're not careful, mobile keyboards may cover your form or, worse, partially
 
 Where possible, avoid this by displaying only the email (or phone) and password inputs and Sign up button at the top of your sign-up page. Put other content underneath.
 
-### Help users to avoid re-entering data
+### Help users avoid re-entering sign-up data
 
-You can help browsers store data correctly and autofill inputs, so users don't have to remember to enter email and password values. This is particularly important on mobile, and crucial for email inputs, which get high abandonment rates. There are two parts to this:
+Browsers and password managers store and fill credentials based on the input's `autocomplete` value, `type`, and its `<form>`. To allow credentials to be stored, give inputs a stable `name` or `id` (not randomly generated on each page load or site deployment), and put them in a `<form>` element with a submit button.
 
-1.  The `autocomplete`, `name`, `id`, and `type` attributes help browsers understand the role of inputs in order to store data that can later be used for autofill. To allow data to be stored for autofill, modern browsers also require inputs to have a stable `name` or `id` value (not randomly generated on each page load or site deployment), and to be in a `<form>` element with a `submit` button.
-1.  The `autocomplete` attribute helps browsers correctly autofill inputs using stored data.
-
-For email inputs use `autocomplete="username"`, since `username` is recognized by password managers in modern browsers—even though you should use `type="email"` and you may want to use `id="email"` and `name="email"`. For password inputs, use the appropriate `autocomplete` and `id` values to help browsers differentiate between new and current passwords.
+For email inputs use `autocomplete="username"`, since `username` is recognized by password managers—even though you should use `type="email"` and you may want to use `id="email"` and `name="email"`. For the password input, use `autocomplete="new-password"` so the browser offers a new password instead of filling a stored one.
 
 ### Use autocomplete="new-password" and id="new-password" for a new password
 
@@ -120,23 +107,13 @@ Modern browsers use heuristics to decide when to show the password manager UI an
 
 Built-in browser password generators mean users and developers don't need to work out what a "strong password" is. Since browsers can securely store passwords and autofill them as necessary, there's no need for users to remember or enter passwords. Encouraging users to take advantage of built-in browser password generators also means they're more likely to use a unique, strong password on your site, and less likely to reuse a password that could be compromised elsewhere.
 
-### Help save users from accidentally missing inputs
-
-Add the `required` attribute to both email and password fields. Modern browsers automatically prompt and set focus for missing data.
-
 ### Allow password pasting
 
-Some sites don't allow text to be pasted into password inputs.
+Don't block pasting into password inputs. Blocking paste stops users from pasting from a password manager, which encourages weaker, memorable passwords; NIST SP 800-63B says verifiers SHALL allow password managers and autofill, and SHOULD permit paste.
 
-Disallowing password pasting annoys users, encourages passwords that are memorable (and therefore may be easier to compromise) and, according to organizations such as the UK National Cyber Security Centre, may actually reduce security. Users only become aware that pasting is disallowed after they try to paste their password, so disallowing password pasting doesn't avoid clipboard vulnerabilities.
+### Optionally offer third-party login
 
-### Offer third-party login
-
-Many users prefer to sign in to websites using an email address and password sign-up form. However, you should also enable users to sign in using a third-party identity provider, also known as federated login.
-
-This approach has several advantages. For users who create an account using federated login, you don't need to ask for, communicate, or store passwords.
-
-You may also be able to access additional verified profile information from federated login, such as an email address—which means the user doesn't have to enter that data and you don't need to do the verification yourself. Federated login can also make it much easier for users when they get a new device.
+If your product already supports a third-party identity provider (federated login), you can offer it alongside the email and password form. Users who sign up this way don't need a password, and the provider may supply a verified email address. Federated login is optional; don't add it just to build a sign-up form.
 
 ### Take care with usernames
 
