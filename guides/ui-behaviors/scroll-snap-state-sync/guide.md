@@ -45,6 +45,17 @@ Use the `scrollsnapchange` event on the scroll container to react when the user 
 const main = document.getElementById('main');
 const links = document.querySelectorAll('nav a');
 
+// Mark the TOC link for the given section as the current one.
+function setSelectedParagraph(id) {
+  links.forEach((link) => {
+    if (link.getAttribute('href') === `#${id}`) {
+      link.setAttribute('aria-current', 'location');
+    } else {
+      link.removeAttribute('aria-current');
+    }
+  });
+}
+
 // The event fires when the scroller settles on a new snap target
 main.addEventListener('scrollsnapchange', (event) => {
   // Use snapTargetBlock for vertical or snapTargetInline for horizontal
@@ -70,20 +81,25 @@ In addition, be careful when using the `mandatory` value for `scroll-snap-type`,
 
 {{ FEATURE_FALLBACKS("scroll-snap-events") }}
 
-If `scrollsnapchange` is not supported, use `IntersectionObserver` to detect which element is currently at the top of the scroller. Note this is different behavior than `scrollsnapchange`, as this will trigger while the scroll happens, rather than only when the scroll has settled.
+If `scrollsnapchange` is not supported, use `IntersectionObserver` to detect which element is currently at the top of the scroller. Note this is different behavior than `scrollsnapchange`, as this will trigger while the scroll happens, rather than only when the scroll has settled. The script reuses `main` and `setSelectedParagraph()` from the previous snippet.
 
 ```javascript
 // Feature detect support for scroll snap events
 if (!('onscrollsnapchange' in HTMLElement.prototype)) {
+  // The snap targets (e.g., section headers)
+  const headers = main.querySelectorAll('h2');
+
   const observer = new IntersectionObserver(
     () => {
       // Each time the set of intersecting headers changes, find the top
       // header that is visible.
+      // Compare against the scroller's top edge, not the viewport's.
+      const scrollerTop = main.getBoundingClientRect().top;
       const topEntry = [...headers].reduce((currentTop, header) => {
         // Use the bottom to handle scrolling up, when the top is still offscreen
         const {bottom} = header.getBoundingClientRect();
-        // Don't match if the header's bottom is above the scrollport
-        if (bottom < 0) return;
+        // Skip headers whose bottom is above the scrollport, keeping the current result
+        if (bottom < scrollerTop) return currentTop;
         if (!currentTop) return header;
         return bottom <
           currentTop.getBoundingClientRect().bottom
@@ -92,10 +108,10 @@ if (!('onscrollsnapchange' in HTMLElement.prototype)) {
       }, undefined);
       if (topEntry) setSelectedParagraph(topEntry.id);
     },
-    { root: main, threshold: 0.9 // Adjust based on your use case },
+    // Adjust the threshold based on your use case
+    { root: main, threshold: 0.9 },
   );
 
-  // Observe all snap targets (e.g., section headers)
-  document.querySelectorAll('h2').forEach(header => observer.observe(header));
+  headers.forEach(header => observer.observe(header));
 }
 ```

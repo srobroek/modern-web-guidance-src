@@ -278,11 +278,13 @@
           () => {
             // Each time the set of intersecting headers changes, find the top
             // header that is visible.
+            // Compare against the scroller's top edge, not the viewport's.
+            const scrollerTop = main.getBoundingClientRect().top;
             const topEntry = [...headers].reduce((currentTop, header) => {
               // Use the bottom to handle scrolling up, when the top is still offscreen
               const {bottom} = header.getBoundingClientRect();
-              // Don't match if the header's bottom is aboce the scrollport
-              if (bottom < 0) return;
+              // Skip headers whose bottom is above the scrollport, keeping the current result
+              if (bottom < scrollerTop) return currentTop;
               if (!currentTop) return header;
               return bottom <
                 currentTop.getBoundingClientRect().bottom
