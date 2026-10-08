@@ -152,14 +152,22 @@ In browsers with built-in support for scroll-driven animations, ALWAYS use the n
 
 Note that not every effect can be recreated using the fallbacks approach.
 
-For this use-case specifically, the following script applies the fallback for browsers that do not support scroll-driven animations. It uses an `IntersectionObserver` to track the visibility of the `.wrapper` element and updates the `transform` property of the layers based on the scroll position.
+For this use-case specifically, the following script applies the fallback for browsers that do not support scroll-driven animations. It uses an `IntersectionObserver` to track how much of each direct child of `.scroller` is visible and sets its `scale` from that ratio. Like the CSS, it leaves the elements alone when the user prefers reduced motion.
+
+The fallback only approximates the `entry` and `exit` ranges: it uses the visible fraction of each element, measured on its already-scaled box, rather than its scroll position. An element larger than the scrollport never reaches a ratio of 1, so it never returns to full size, while the native `entry` range still completes.
 
 ```html
 <script>
   if (!CSS.supports('(animation-timeline: view()) and (animation-range: entry)')) {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
+          // Match the CSS: no scale effect when the user prefers reduced motion.
+          if (reduceMotion.matches) {
+            entry.target.style.removeProperty('scale');
+            continue;
+          }
           // This matches the effect as defined in the CSS example above.
           // Customize this further if needed.
           entry.target.style.scale = 0.5 + entry.intersectionRatio * 0.5;
