@@ -14,8 +14,10 @@
       }
 
       /*
-      * Setting font-size-adjust to from-font automatically standardizes
-      * the metrics based on the first font provided in the list.
+      * 0.5454 is the measured aspect value (x-height / font size) of
+      * Verdana, the preferred font. from-font would read the font in use,
+      * so a fallback would be normalized to its own x-height and keep
+      * its smaller size.
       */
       .font-swap{
         /*

@@ -1,4 +1,4 @@
 - The text container has the `font-size-adjust` CSS property applied with a value other than `none`.
-- The `font-size-adjust` property is set to either a numeric value or the `from-font` keyword.
+- The `font-size-adjust` property is set to a numeric value that matches the measured aspect value of the preferred font, not to the `from-font` keyword (which normalizes a fallback to its own metric during a swap).
 - When the `font-family` is swapped from a font with a high aspect ratio (like Verdana) to one with a lower aspect ratio (like Times New Roman), the computed `font-size` increases to maintain a consistent x-height.
 - The text remains readable and visually consistent in size even when the font family changes.
