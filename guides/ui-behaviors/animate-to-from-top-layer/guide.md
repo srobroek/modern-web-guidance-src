@@ -35,9 +35,11 @@ The `::backdrop` pseudo-element can be animated similarly by applying transition
 ## Example
 
 ```css
-/* 1. Define the visible (open) state */
-dialog[open],
-[popover]:popover-open {
+/* 1. Define the visible (open) state.
+   :is() is forgiving: a browser that lacks :popover-open drops only that
+   branch instead of the whole rule (which would leave open dialogs at the
+   base opacity: 0). .\:popover-open is the popover polyfill's state class. */
+:is(dialog[open], [popover]:is(:popover-open, .\:popover-open)) {
   opacity: 1;
   transform: scale(1);
 
@@ -72,8 +74,7 @@ dialog::backdrop,
   transition-behavior: allow-discrete;
 }
 
-dialog[open]::backdrop,
-[popover]:popover-open::backdrop {
+:is(dialog[open], [popover]:popover-open)::backdrop {
   background-color: rgba(0, 0, 0, 0.5);
 
   @starting-style {
@@ -91,8 +92,7 @@ dialog[open]::backdrop,
   }
 
   @starting-style {
-    dialog[open],
-    [popover]:popover-open {
+    :is(dialog[open], [popover]:is(:popover-open, .\:popover-open)) {
       transform: none;
     }
   }
@@ -105,6 +105,7 @@ dialog[open]::backdrop,
 - **MANDATORY**: Use `allow-discrete` for the `display` property transition.
 - **MANDATORY**: Respect user preferences for reduced motion using `prefers-reduced-motion` by simplifying transitions (e.g., removing transforms and shortening duration).
 - **DO**: Place the `@starting-style` block inside or after the "open" state selector to ensure proper cascading.
+- **MANDATORY**: Combine `dialog[open]` and `:popover-open` only inside a forgiving `:is()` or `:where()`, or write separate rules. In a plain selector list, browsers that support `<dialog>` but not `:popover-open` discard the whole rule, and open dialogs stay invisible.
 - **DO NOT**: Use `@starting-style` for exit animations; exit animations are defined by the transition to the base (closed) state.
 
 ## Fallback strategies
@@ -118,10 +119,10 @@ dialog[open]::backdrop,
 
 Entry animations work in pure CSS across all browsers that support `@starting-style`—no `.is-opening` class is needed because entry transitions do not depend on `overlay` or discrete `display` transitions.
 
-Exit animations require both `overlay` and discrete `display` transition support. When either is unsupported (such as in Firefox and Safari), wrap the open-state selectors in `:is()` and append `:where(:not([data-closing]))` (nesting `&::backdrop` and `@starting-style`) so setting `data-closing` triggers the exit transition while the element remains in the top layer, then wait for `getAnimations()` to settle before calling `.close()` or `.hidePopover()`:
+Exit animations require both `overlay` and discrete `display` transition support. When either is unsupported (such as in Firefox and Safari), append `:where(:not([data-closing]))` to the open-state selector (nesting `&::backdrop` and `@starting-style`) so setting `data-closing` triggers the exit transition while the element remains in the top layer, then wait for `getAnimations()` to settle before calling `.close()` or `.hidePopover()`:
 
 ```css
-:is(dialog[open], [popover]:popover-open):where(:not([data-closing])) {
+:is(dialog[open], [popover]:is(:popover-open, .\:popover-open)):where(:not([data-closing])) {
   opacity: 1;
   transform: scale(1);
 
