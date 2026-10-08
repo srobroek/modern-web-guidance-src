@@ -30,7 +30,7 @@ Walk the decision tree top-to-bottom and stop at the first match. Note that layo
 2. **Does a nested element need to line up with its grandparent grid's tracks?** Use **subgrid** — 2D, relationship-first, inherits parent tracks so grandchildren can align across siblings.
 3. **Is it a complex page or component structure with rows AND columns?** Use **grid** — 2D, layout-first, you define the skeleton and content fills it.
 4. **Is the content a long flow of prose that should split into balanced columns?** Use **multi-column** — 1D flow, newspaper-style.
-5. **Are items of varied heights that need to be packed tightly?** Use **grid** with `grid-auto-flow: dense` today; reach for native masonry (aka "grid lanes") only when it ships in your Baseline target (see [§8](#8-grid-lanes-aka-masonry)).
+5. **Are items of varied heights that need to be packed tightly?** Use **multi-column** for flowing content, or **grid** with `grid-auto-flow: dense` only when the items are not interactive (dense packing reorders them visually away from DOM and focus order); reach for native masonry (aka "grid lanes") only when it ships in your Baseline target (see [§8](#8-grid-lanes-aka-masonry)).
 6. **Does an element need to float above the page and stay spatially tethered to a trigger, even across DOM boundaries or stacking contexts?** Use **anchor positioning** — `anchor-name` on the trigger, `position-anchor` on the overlay (see [§5](#5-native-overlays-anchor-positioning-and-stacking-contexts)).
 
 ### 1.2 Working principles
@@ -172,7 +172,7 @@ Query the size (or computed style) of an ancestor container rather than the view
 **Do:**
 
 - Establish a containment context with `container-type: inline-size` (width-only queries) or `container-type: size` (both axes) on a wrapper before its descendants can be queried.
-- Name containers with `container-name` (or the `container` shorthand: `container: inline-size card`) when nested contexts could collide.
+- Name containers with `container-name` (or the `container` shorthand, name first: `container: card / inline-size`) when nested contexts could collide.
 - Include container query units in calculating fluid type and spacing: `cqi`/`cqb` (logical inline/block), `cqw`/`cqh` (physical), `cqmin`/`cqmax`.
 - Give the container a definite `block-size` whenever `container-type: size` is used — without one, descendants collapse because size containment forces the container to ignore its content.
 
@@ -186,7 +186,7 @@ Query the size (or computed style) of an ancestor container rather than the view
 
 ```css
 .card-wrapper {
-  container: inline-size / card; /* shorthand for container-type + container-name */
+  container: card / inline-size; /* shorthand: <container-name> / <container-type> */
 }
 
 @container card (inline-size > 400px) {
@@ -209,6 +209,8 @@ Query the size (or computed style) of an ancestor container rather than the view
 {{ BASELINE_STATUS("dialog") }}
 {{ BASELINE_STATUS("popover") }}
 {{ BASELINE_STATUS("anchor-positioning") }}
+
+Chrome and Edge have shipped core anchor positioning (`anchor-name`, `position-anchor`, `anchor()`) since version 125, `position-try-fallbacks` since 128, and `position-area` since 129. The status above covers the complete feature set, which is why it can list Chromium as unsupported; feature-detect the parts you depend on.
 
 **When to use each overlay primitive:**
 
@@ -268,7 +270,7 @@ Manage layout shifts, scrollbars, and clipping predictably.
 {{ BASELINE_STATUS("viewport-unit-variants") }}
 
 - Use `dvh`/`dvw` for mobile layout containers that must account for browser UI shifting (URL bar collapse/expand).
-- Don't use `100vw` for full-width layout — it ignores scrollbar width and causes horizontal overflow. Use `100%`, `100dvw`, or `100svw` instead.
+- Don't use `100vw` for full-width layout — with a classic (non-overlay) scrollbar the viewport width includes the scrollbar, so the element overflows horizontally. `100svw` and `100dvw` measure the same way and overflow too. Use `100%` (or the default `auto` width of a block) instead.
 
 > For the responsive design entry point (dynamic viewport units, reserving space for media, fluid typography), see {{ GUIDE_REF("responsive-design") }}.
 
@@ -281,7 +283,7 @@ The spec is in development. The currently agreed-upon name is "grid lanes" (e.g.
 
 **Do:**
 
-- Use grid with `grid-auto-flow: dense` for tight packing today, accepting that DOM order may not match visual order.
+- Use grid with `grid-auto-flow: dense` for tight packing of non-interactive items (such as decorative image tiles) today. It reorders items visually, so don't use it when items contain links, buttons, or other focusable content; keyboard focus and screen readers follow DOM order.
 - Use multi-column (`columns: 3; column-gap: 1rem`) for content-heavy masonry-like flow when items are document fragments rather than equal-weight cards.
 - Treat `grid-template-rows: masonry` as a progressive enhancement only — feature-detect with `@supports`.
 

@@ -37,5 +37,5 @@
 - When reserving space for media, the implementation MUST use `aspect-ratio` on media containers, or `width` and `height` attributes on `<img>` elements, to reserve space and prevent Cumulative Layout Shift before assets load.
 - The implementation SHOULD prefer the use CSS logical properties (`inline-size`, `block-size`, `margin-inline`, `padding-block`, `inset-inline-start`) for layout dimensions and spacing.
 - The implementation MUST use dynamic viewport units (`dvh`, `dvw`, `dvb`, or `dvi`) for full-height mobile layout containers instead of `vh`.
-- The implementation MUST NOT use `100vw` for full-width layout containers.
+- The implementation MUST NOT use `100vw`, `100svw`, `100lvw`, or `100dvw` for full-width layout containers.
 - When implementing masonry-style galleries, the implementation MUST use multi-column (`columns`) with `break-inside: avoid`, or grid with `grid-auto-flow: dense` when the items are not interactive, and MUST gate any `grid-template-rows: masonry` or `display: grid-lanes` usage behind an `@supports` block.
