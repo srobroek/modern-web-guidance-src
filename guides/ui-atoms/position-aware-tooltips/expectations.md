@@ -7,4 +7,5 @@
 - The implementation MUST use `@container anchored(fallback: <value>)` to update styles when the tooltip flips to a fallback position.
 - The implementation MUST NOT attempt to style the container element itself directly inside the `@container` block (must use descendants or pseudo-elements).
 - The implementation SHOULD use pseudo-elements (`::before` or `::after`) for decorative arrows to ensure they can be styled based on the position flip.
+- The decorative arrow's `content` MUST only be set inside `@supports (container-type: anchored)`, so browsers without anchored container queries render no arrow instead of one pointing the wrong way.
 - The implementation MUST NOT rely on JavaScript to detect the position flip or update the visual orientation of the tooltip components.

@@ -68,20 +68,23 @@ Like all container queries, `@container` can only style **descendants** of the c
 ```
 
 ```css
-.tooltip-content::before {
-  /* Default "down" arrow for the 'top' position */
-  content: "▼";
-  position: absolute;
-  inset-block-end: 0;
-  inset-inline-start: 1rem;
-}
-
-/* Update to an "up" arrow when the 'flip-block' fallback (bottom) is active */
-@container anchored(fallback: flip-block) {
+/* MANDATORY: Only create the arrow where it can follow the fallback (see Fallback strategies) */
+@supports (container-type: anchored) {
   .tooltip-content::before {
-    content: "▲";
-    inset-block-start: 0;
-    inset-block-end: auto;
+    /* Default "down" arrow for the 'top' position */
+    content: "▼";
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline-start: 1rem;
+  }
+
+  /* Update to an "up" arrow when the 'flip-block' fallback (bottom) is active */
+  @container anchored(fallback: flip-block) {
+    .tooltip-content::before {
+      content: "▲";
+      inset-block-start: 0;
+      inset-block-end: auto;
+    }
   }
 }
 ```
@@ -107,21 +110,14 @@ If you need to change properties on the container itself (like `margin` or `back
 
 - **Prefer logical fallbacks**: Use keywords like `flip-block` and `flip-inline` in `position-try-fallbacks` for simpler queries that handle RTL and different writing modes automatically.
 - **Use pseudo-elements for arrows**: Tooltip arrows are purely decorative and are perfect candidates for `::before` or `::after`, which can be styled via anchored container queries without extra DOM.
+- **Show tooltips on hover and focus**: This guide uses a click-triggered popover to keep the positioning example small. A tooltip that should appear on hover and keyboard focus needs the interest-invoker pattern from {{ GUIDE_REF("interest-triggered-tooltips") }}; the arrow technique here applies unchanged.
 
 
 ## Fallback strategies
 
 {{ BASELINE_STATUS("container-anchor-position-queries") }}
 
-Positioning the arrow based on the applied fallback is a progressive enhancement, and there is not another way of reacting to the fallback position. To hide the arrow in browsers that don't support anchor position container queries, test for CSS support with `@supports (container-type: anchored)`.
-
-```css
-@supports (container-type: anchored) {
-  .tooltip-content::before {
-    content: "▼";
-  }
-}
-```
+Positioning the arrow based on the applied fallback is a progressive enhancement, and there is not another way of reacting to the fallback position. Browsers that can flip the tooltip but cannot run anchored container queries would keep pointing a "▼" arrow at the wrong side, so the arrow MUST only be created inside `@supports (container-type: anchored)`, as in step 3. Do not set `content` on the arrow pseudo-element outside that block. In browsers without support, the tooltip renders without an arrow.
 
 {{ FEATURE_FALLBACKS("popover") }}
 
