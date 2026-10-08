@@ -72,7 +72,7 @@ To prevent the panel from being cut off at the edge of the screen, define "try t
 
 {{ FEATURE_FALLBACKS("popover") }}
 
-{{ BASELINE_STATUS("anchor-positioning") }}
+{{ BASELINE_STATUS("anchor-positioning", "css.properties.position-area") }}
 
 To support browsers without anchor positioning, you must set a reasonable position. By default popovers are centered in the middle of the screen, which may work for your use case.
 
@@ -88,8 +88,13 @@ For some use cases, you may be able to use the `@oddbird/css-anchor-positioning`
 ```
 
 ```css
+/* Mandatory: give the trigger an explicit anchor name, since the polyfill ignores implicit anchors */
+[popovertarget="action-panel"] {
+  anchor-name: --kebab-anchor;
+}
+
 .panel {
-  /* Mandatory: use explicit anchor name */
+  /* Mandatory: reference the trigger's explicit anchor name */
   position-anchor: --kebab-anchor;
   /* Mandatory: use insets rather that position-area for positioning */
   bottom: auto;
