@@ -4,6 +4,6 @@
 - The `media` attribute is used on `<link rel="expect">` when different viewport sizes require blocking on different DOM elements.
 - Render blocking is limited to resources and elements visible in the initial viewport. Non-critical or below-the-fold content is NOT render-blocked.
 - If `view-transition-name` values are assigned dynamically via `pagereveal`, the listener is registered in a `blocking="render"` script in the `<head>`.
-- Dynamically assigned `view-transition-name` values are removed after the transition finishes (using `event.viewTransition.finished`) to preserve bfcache compatibility.
+- Dynamically assigned `view-transition-name` values are removed after the transition finishes (using `event.viewTransition.finished`) so a page restored from the bfcache does not carry stale names into its next transition.
 - No two elements on the same page share the same `view-transition-name` value.
 - Cross-document view transitions MUST be disabled when `prefers-reduced-motion: reduce` is active.

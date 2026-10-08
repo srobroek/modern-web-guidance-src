@@ -38,7 +38,7 @@
         if (banner) banner.style.viewTransitionName = 'card-banner';
       }
 
-      // Clean up after the transition to preserve bfcache compatibility.
+      // Clean up after the transition so a bfcache-restored page does not reuse stale names.
       await event.viewTransition.finished;
       document.querySelectorAll('[style*="view-transition-name"]').forEach((el) => {
         el.style.viewTransitionName = '';

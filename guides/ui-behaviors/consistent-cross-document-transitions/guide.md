@@ -233,8 +233,9 @@ window.addEventListener('pagereveal', async (event) => {
       }
     } finally {
       // MANDATORY: Remove the temporary name after the transition
-      // finishes. Stale names interfere with subsequent navigations
-      // and prevent the page from entering the bfcache.
+      // finishes. Otherwise it persists on this document, including when
+      // the page is later restored from the bfcache, and applies to the
+      // next navigation's snapshot, where it can collide with other names.
       await event.viewTransition.finished;
       heading.style.viewTransitionName = '';
     }
@@ -263,4 +264,4 @@ All browsers that support cross-document view transitions also support `blocking
 
 1. **Performance Impact**: Every render-blocking resource delays the view transition animation start. Minimize the number of render-blocking scripts and use `<link rel="expect">` only for elements that are above the fold. Prerender destination pages using the Speculation Rules API to eliminate loading delays entirely.
 2. **Timeout Behavior**: If the combined render-blocking time exceeds approximately 4 seconds, the browser skips the transition (and any active `viewTransition.ready` promise rejects with an `InvalidStateError`). Ensure critical resources load well within this window.
-3. **bfcache Compatibility**: Temporary `view-transition-name` assignments that are not cleaned up after the transition can prevent the page from entering the bfcache. Always remove dynamically assigned names in the `finished` callback.
+3. **bfcache Restores**: A page restored from the bfcache keeps any `view-transition-name` that script assigned, so a temporary name left behind takes part in the next transition from that page, where a duplicate name skips the transition. Always remove dynamically assigned names once the transition has finished (or once `ready` settles, after the snapshots are taken).
