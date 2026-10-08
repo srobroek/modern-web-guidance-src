@@ -189,7 +189,7 @@ test('Range objects have their start and end set on text nodes and not element n
   expect(results).toBe(true);
 });
 
-test('CSS.highlights.clear() is called before recalculating highlights to prevent stale ranges', async ({ page }) => {
+test('CSS.highlights.delete() removes the page highlight before recalculating highlights to prevent stale ranges', async ({ page }) => {
   await page.goto(targetUrl);
   const term = await getSearchTerm(page);
   await page.fill('#search-input', term);

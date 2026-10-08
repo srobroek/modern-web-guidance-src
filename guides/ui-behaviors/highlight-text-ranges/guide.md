@@ -47,9 +47,12 @@ const searchHighlight = new Highlight(...matchingRanges);
 Register each `Highlight` under a custom name using `CSS.highlights`, which is a `Map`-like `HighlightRegistry`.
 
 ```javascript
-// MANDATORY: Clear previous highlights before registering new ones
-// to avoid stale ranges persisting on the page.
-CSS.highlights.clear();
+// MANDATORY: Remove only the highlight this feature owns before
+// recalculating, to avoid stale ranges persisting on the page.
+// DO NOT call CSS.highlights.clear(): the registry is shared by the whole
+// document, so it also erases spelling, collaboration or other features'
+// highlights.
+CSS.highlights.delete("search-results");
 
 CSS.highlights.set("search-results", searchHighlight);
 ```
@@ -106,7 +109,9 @@ if (CSS.highlights) {
 If the highlight is critical for the user experience, fall back to wrapping matched text in `<mark>` elements. This modifies the DOM, so take care to preserve event listeners and avoid breaking the document structure.
 
 ```javascript
-if (!CSS.highlights) {
+// MANDATORY: Skip empty search terms. indexOf("") matches at every
+// position without advancing, so the wrapping loop would never end.
+if (!CSS.highlights && searchTerm) {
   // Walk text nodes and wrap matches in <mark>, preserving structure.
   const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
   const nodes = [];

@@ -2,7 +2,7 @@
 * `CSS.highlights.set()` is called to register at least one `Highlight` object in the `HighlightRegistry`.
 * `Highlight` objects are constructed from one or more `Range` objects.
 * `Range` objects have their start and end set on text nodes (not element nodes).
-* `CSS.highlights.clear()` is called before recalculating highlights to prevent stale ranges.
+* `CSS.highlights.delete()` removes the page's own named highlight before recalculating highlights to prevent stale ranges.
 * Only allowable CSS properties are used inside `::highlight()` (e.g., `color`, `background-color`, `text-decoration`, `text-shadow`). Properties like `font-size`, `padding`, or `background-image` are NOT used inside `::highlight()`.
 * Text nodes are collected using `TreeWalker` with `NodeFilter.SHOW_TEXT`, rather than manipulating `innerHTML` or wrapping text in extra DOM elements.
 * Feature detection checks for `CSS.highlights` before using the API.

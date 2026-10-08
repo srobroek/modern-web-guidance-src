@@ -103,7 +103,8 @@
 
         if (CSS.highlights) {
           // ---- CSS Custom Highlight API path ----
-          CSS.highlights.clear();
+          // Remove only this demo's highlight; clear() would erase other features' highlights.
+          CSS.highlights.delete("search-results");
 
           if (!searchTerm) return;
 
