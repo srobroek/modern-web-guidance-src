@@ -37,6 +37,8 @@ Speculation rules have a JSON-based format and can be included in a `<script typ
 
 A `tag` can also be used, either at a global level or on a per-rule basis. When set, this tag will be included in the `Sec-Speculation-Tags` header, and allows you to identify server-side which speculations were made.
 
+`href_matches` values are URL patterns. A pathname without a wildcard matches only that exact path, while query strings and fragments are always ignored: `"/logout"` matches `/logout?next=/` but not `/logout/` or `/logout/confirm`. To exclude a whole section, match the path with and without its subpaths using an optional group, for example `"/wp-admin{/*}?"`. A bare `"/wp-admin"` leaves `/wp-admin/edit.php` speculated.
+
 ### Example of a simple URL list rule for prefetching predefined URLs
 
 ```html
@@ -54,12 +56,19 @@ A `tag` can also be used, either at a global level or on a per-rule basis. When 
 
 ### Example of a simple document rule for prerendering all same-origin links on a page
 
+Every rule that matches all links must exclude URLs that change state when fetched, such as `/logout`.
+
 ```html
 <script type="speculationrules">
   {
     "tag": "all-links-speculations",
     "prerender": [{
-      "where": { "href_matches": "/*" }
+      "where": {
+        "and": [
+          { "href_matches": "/*" },
+          { "not": {"href_matches": "/logout{/*}?"}}
+        ]
+      }
     }]
   }
 </script>
@@ -75,7 +84,8 @@ A `tag` can also be used, either at a global level or on a per-rule basis. When 
       "where": {
         "and": [
           { "href_matches": "/*" },
-          { "not": {"href_matches": "/wp-admin"}},
+          { "not": {"href_matches": "/logout{/*}?"}},
+          { "not": {"href_matches": "/wp-admin{/*}?"}},
           { "not": {"href_matches": "/*\\?*(^|&)add-to-cart=*"}},
           { "not": {"selector_matches": ".do-not-prerender"}},
           { "not": {"selector_matches": "[rel~=nofollow]"}}
@@ -88,19 +98,29 @@ A `tag` can also be used, either at a global level or on a per-rule basis. When 
 
 ### Example of a mixed rule set
 
-This example shows a rule set that prefetches all links eagerly, and then goes further than this to prerender those same links when it gets more signals with `moderate` eagerness.
+This example shows a rule set that prefetches all links eagerly, and then goes further than this to prerender those same links when it gets more signals with `moderate` eagerness. Both rules exclude `/logout`.
 
 ```html
 <script type="speculationrules">
   {
     "prefetch": [{
       "tag": "prefetch-speculations",
-      "where": { "href_matches": "/*" },
+      "where": {
+        "and": [
+          { "href_matches": "/*" },
+          { "not": {"href_matches": "/logout{/*}?"}}
+        ]
+      },
       "eagerness": "eager"
     }],
     "prerender": [{
       "tag": "prerender-speculations",
-      "where": { "href_matches": "/*" },
+      "where": {
+        "and": [
+          { "href_matches": "/*" },
+          { "not": {"href_matches": "/logout{/*}?"}}
+        ]
+      },
       "eagerness": "moderate"
     }]
   }
@@ -116,7 +136,7 @@ This example shows a rule set that prefetches all links eagerly, and then goes f
 - **DO** consider the trade-offs between prefetch and prerender, and choose the appropriate one for your use case. Prerender is more expensive than prefetch and can cause more unintended side effects in complex applications that display dynamic state, but provides a better user experience. Ask the developer for their preference if unsure.
 - **DO** consider the trade-offs between the different `eagerness` levels, and choose the appropriate one for your use case. More eager speculation provides a better user experience but uses more resources and can cause more unintended side effects in complex applications that display dynamic state. Ask the developer for their preference if unsure.
 - **DO NOT** overuse speculation rules, for example, to speculate every link on the page. Browsers have limits (2 speculations for non-eager speculations). `immediate` should only be used for a very small number of links.
-- **DO NOT** speculate URLs that likely trigger state changes, like `/logout` or `/add-to-cart`, and explicitly exclude them from your speculation rules if they are likely to be included in document rules.
+- **DO NOT** speculate URLs that likely trigger state changes, like `/logout` or `/add-to-cart`, and explicitly exclude them from your speculation rules if they are likely to be included in document rules. Exclude a path together with its subpaths (`"/logout{/*}?"`); an exclusion without a wildcard matches only that exact path.
 - **DO NOT** use speculation rules on Single Page Applications (SPAs). Speculation rules are designed for multi-page applications (MPAs) where the browser navigates to a new document on each navigation. In SPAs, the browser does not navigate to a new document on each navigation, so speculation rules will not work as expected.
 
 ## Browser support and fallback strategies

@@ -24,3 +24,5 @@
 - If using `immediate` for `urls` property then the `urls` property should contain a maximum of 10 urls, and ideally fewer.
 - If using `immediate` for `where` property then the rule should be very specific and match a maximum of 10 urls, and ideally fewer.
 - The `source` property is no-longer needed and discouraged so should not be present in the rule.
+- If a `where` rule matches all same-origin links (for example `"href_matches": "/*"`), it excludes state-changing URLs such as `/logout`.
+- Exclusions meant to cover a whole path section also match its subpaths (for example `"/wp-admin{/*}?"`), rather than only the exact path (`"/wp-admin"`).
