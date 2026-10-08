@@ -60,18 +60,18 @@ The tooltip can be positioned using anchor positioning. When the tooltip is open
 
 ```css
 /* MANDATORY: use explicit anchor names for compatibility with the polyfill */
-button[interestfor="tooltip-dom"] {
-  anchor-name: --tooltip-dom;
+button[interestfor="tooltip"] {
+  anchor-name: --tooltip;
 }
-#tooltip-dom {
-  position-anchor: --tooltip-dom;
+#tooltip {
+  position-anchor: --tooltip;
 }
 ```
 
-Also, the polyfill does not support `position-area` on popovers, so **MANDATORY:** DO position using `anchor()` functions, and **YOU MUST** include a `position-try` fallback (e.g. `flip-block` or `flip-inline`).
+Also, the polyfill does not support `position-area` on popovers, so **MANDATORY:** DO position using `anchor()` functions, and **YOU MUST** include a `position-try` fallback (e.g. `flip-block` or `flip-inline`). Scope these insets to the tooltip; a bare `[popover]` selector would also move every other popover on the page.
 
 ```css
-[popover]{
+#tooltip {
   /* MANDATORY: use anchor functions and a position-try fallback for the polyfill */
   top: anchor(bottom);
   left: anchor(center);
@@ -85,7 +85,7 @@ Also, the polyfill does not support `position-area` on popovers, so **MANDATORY:
 
 {{ FEATURE_FALLBACKS("interest-invokers") }}
 
-Interest invokers must be conditionally polyfilled using the `interestfor` polyfill package from NPM. Do prefer bundling the polyfill over using the CDN.
+Interest invokers must be conditionally polyfilled using the `interestfor` polyfill package from NPM. Do prefer bundling the polyfill over using the CDN. The polyfill writes the accessibility wiring itself (`aria-describedby` for a plain-text hint; `aria-details`, `aria-expanded`, and `role="tooltip"` when the target contains interactive or structural content), so the **DO NOT** rules above about adding ARIA attributes still apply.
 
 ```html
 <script type="module">
@@ -100,9 +100,11 @@ Interest invokers must be conditionally polyfilled using the `interestfor` polyf
 
 {{ BASELINE_STATUS("popover-hint") }}
 
+Early `popover="hint"` implementations (Chrome and Edge from 133, Firefox from 149) follow an older version of the specification with inconsistent behaviors; the support status above counts only browsers with the current behavior.
+
 The `popover-polyfill` does not polyfill the hint behavior in browsers that support `popover` but not `popover="hint"`. For those browsers, a tooltip opened via focus may stay open when a second tooltip opened via hover.
 
-{{ BASELINE_STATUS("anchor-positioning") }}
+{{ BASELINE_STATUS("anchor-positioning", "css.properties.anchor-name") }}
 
 **MANDATORY:** To support browsers without anchor positioning, you MUST use the `@oddbird/css-anchor-positioning` polyfill. It does not support implicit anchors, so you MUST add anchor names to the trigger. Additionally, `position-area` is not supported on popovers by the polyfill, so you MUST use `anchor()` on the desired insets. 
 
@@ -116,12 +118,12 @@ The `popover-polyfill` does not polyfill the hint behavior in browsers that supp
 ```
 
 ```css
-button[interestfor="tooltip-attrs"] {
+button[interestfor="tooltip"] {
   /* MANDATORY: Each trigger and popover pair must have a unique anchor name, referenced by `anchor-name` on the trigger and `position-anchor` on the popover. */
-  anchor-name: --tooltip-attrs;
+  anchor-name: --tooltip;
 }
-#tooltip-attrs {
-  position-anchor: --tooltip-attrs;
+#tooltip {
+  position-anchor: --tooltip;
   /* If using the anchor positioning polyfill with a popover, DO use `anchor()` functions, and not `position-area. */
   top: anchor(bottom);
   left: anchor(right);
