@@ -137,12 +137,24 @@ See `references/extensions/content-scripts.md`.
 let count = 0;
 chrome.tabs.onUpdated.addListener(() => { count++; });
 
-// ✅ CORRECT — persist in chrome.storage, read on every event
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+// ✅ CORRECT — persist in chrome.storage, read on every event, and serialize the
+// read-modify-write: overlapping events would otherwise both read the same count
+// across the await and lose an increment. The queue only coordinates in-flight
+// updates; storage stays the source of truth.
+let storageQueue = Promise.resolve();
+function updateStorage(update) {
+  const run = storageQueue.then(update);
+  storageQueue = run.catch(() => {}); // keep the queue usable after a failed update
+  return run;
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status !== 'complete') return;
-  const { count = 0 } = await chrome.storage.local.get('count');
-  await chrome.storage.local.set({ count: count + 1 });
-  await chrome.action.setBadgeText({ text: String(count + 1) });
+  return updateStorage(async () => {
+    const { count = 0 } = await chrome.storage.local.get('count');
+    await chrome.storage.local.set({ count: count + 1 });
+    await chrome.action.setBadgeText({ text: String(count + 1) });
+  });
 });
 ```
 
