@@ -49,11 +49,16 @@ if(!CSS.supports('animation-delay: calc(sibling-index() * 0.1s)')){
 }
 ```
 
-Add an `animation-delay` declaration that uses the `--sibling-index` custom property. It must be before the `animation-delay` declaration that uses the `sibling-index()` function. This does not need to be wrapped in `@supports` - older browsers will not parse the second declaration and will use the first declaration.
+Add an `animation-delay` declaration that uses the `--sibling-index` custom property, and override it with the `sibling-index()` declaration only inside `@supports`. MANDATORY: do not rely on declaration order alone. Because the `sibling-index()` declaration also contains `var()`, older browsers do not reject it at parse time; it wins the cascade, becomes invalid at computed-value time, and resets `animation-delay` to `0s`, so the fallback never staggers.
 
 ```css
 #stagger-list > .item {
   animation-delay: calc(var(--sibling-index) * var(--stagger-time));
-  animation-delay: calc(sibling-index() * var(--stagger-time));
+}
+
+@supports (animation-delay: calc(sibling-index() * 0.1s)) {
+  #stagger-list > .item {
+    animation-delay: calc(sibling-index() * var(--stagger-time));
+  }
 }
 ```
