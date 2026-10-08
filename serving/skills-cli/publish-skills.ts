@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
-import ghpages, { type Git } from 'gh-pages';
+import ghpages, { type Git, type PublishOptions } from 'gh-pages';
 import { buildDist } from './build-dist.ts';
 import { updateReadmeWithFeaturesAndUseCases, getFeaturesAndUseCases } from './build-readme.ts';
 import { fileURLToPath } from 'node:url';
@@ -52,13 +52,39 @@ export function withoutUnpublishedBins(manifest: PackageManifest): PackageManife
   return publishedBins.length > 0 ? { ...rest, bin: Object.fromEntries(publishedBins) } : rest;
 }
 
-async function stripUnpublishedBins(git: Git): Promise<Git> {
-  // gh-pages runs this hook in its clone of the distribution repo after copying the files.
-  const { cwd } = git as Git & { cwd: string };
-  const manifestPath = path.join(cwd, 'package.json');
+/**
+ * Working directory of the distribution-repo clone that gh-pages hands to `beforeAdd`.
+ * gh-pages 6.x sets `this.cwd` in its Git constructor (lib/git.js), but @types/gh-pages does
+ * not declare it, so read it through this checked accessor rather than an unchecked cast.
+ */
+export function cloneDir(git: Git): string {
+  if (!('cwd' in git) || typeof git.cwd !== 'string' || git.cwd === '') {
+    throw new Error('gh-pages Git object has no cwd; check the gh-pages version.');
+  }
+  return git.cwd;
+}
+
+/** gh-pages `beforeAdd` hook: runs in the clone after the files are copied, before `git add`. */
+export async function stripUnpublishedBins(git: Git): Promise<Git> {
+  const manifestPath = path.join(cloneDir(git), 'package.json');
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as PackageManifest;
   await fs.writeFile(manifestPath, JSON.stringify(withoutUnpublishedBins(manifest), null, 2) + '\n');
   return git;
+}
+
+export const DIST_REPO_PUSH_URL = 'git@github.com:GoogleChrome/modern-web-guidance.git';
+
+/** gh-pages options for publishing dist/skills-cli/ to the distribution repo. */
+export function distributionPublishOptions(newVersion: string, repo = DIST_REPO_PUSH_URL): PublishOptions {
+  return {
+    branch: 'main',
+    repo,
+    dotfiles: true,
+    message: `Release v${newVersion}`,
+    tag: `v${newVersion}`,
+    src: GH_PUBLISH_PATTERNS,
+    beforeAdd: stripUnpublishedBins,
+  };
 }
 
 const isDryRun = process.argv.includes('--dry-run');
@@ -125,25 +151,13 @@ async function publishToDistributionRepo(publishCliDir: string, newVersion: stri
   console.log(`\nPublishing new dist/skills-cli/ to GoogleChrome/modern-web-guidance (main branch)...`);
 
   await new Promise<void>((resolve, reject) => {
-    ghpages.publish(
-      publishCliDir,
-      {
-        branch: 'main',
-        repo: 'git@github.com:GoogleChrome/modern-web-guidance.git',
-        dotfiles: true,
-        message: `Release v${newVersion}`,
-        tag: `v${newVersion}`,
-        src: GH_PUBLISH_PATTERNS,
-        beforeAdd: stripUnpublishedBins,
-      },
-      (err) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      },
-    );
+    ghpages.publish(publishCliDir, distributionPublishOptions(newVersion), (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
   });
 
 const releaseNotes = await generateReleaseNotes({
