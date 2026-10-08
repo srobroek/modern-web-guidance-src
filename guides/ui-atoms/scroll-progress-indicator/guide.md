@@ -28,6 +28,15 @@ This code grows the `#progress` element on scroll using an anonymous scroll-time
 
 ```css
 @media (prefers-reduced-motion: no-preference) {
+  /* MANDATORY: Base styles stay outside @supports so the JavaScript fallback has a visible bar to scale */
+  #progress {
+    position: fixed;
+    left: 0; top: 0;
+    width: 100%; height: 1em;
+    background: red;
+    transform-origin: 0 50%;
+  }
+
   @supports ((animation-timeline: scroll())) {
     @keyframes grow-progress {
       from { transform: scaleX(0); }
@@ -35,12 +44,6 @@ This code grows the `#progress` element on scroll using an anonymous scroll-time
     }
 
     #progress {
-      position: fixed;
-      left: 0; top: 0;
-      width: 100%; height: 1em;
-      background: red;
-
-      transform-origin: 0 50%;
       animation: grow-progress auto linear;
       animation-timeline: scroll();
     }
@@ -61,6 +64,14 @@ This code grows the `#progress` element on scroll using a named scroll-timeline,
 
 ```css
 @media (prefers-reduced-motion: no-preference) {
+  #progress {
+    position: fixed;
+    left: 0; top: 0;
+    width: 100%; height: 1em;
+    background: red;
+    transform-origin: 0 50%;
+  }
+
   @supports ((animation-timeline: scroll())) {
     @keyframes grow-progress {
       from { transform: scaleX(0); }
@@ -72,12 +83,6 @@ This code grows the `#progress` element on scroll using a named scroll-timeline,
     }
 
     #progress {
-      position: fixed;
-      left: 0; top: 0;
-      width: 100%; height: 1em;
-      background: red;
-
-      transform-origin: 0 50%;
       animation: grow-progress auto linear;
       animation-timeline: --tl;
     }
@@ -119,20 +124,26 @@ In browsers with built-in support for scroll-driven animations, ALWAYS use the n
 
 Note that not every effect can be recreated using the fallbacks approach.
 
-For this use-case specifically, the following script applies the fallback for browsers that do not support scroll-driven animations. It uses a scroll listener to track the scroll position of the root element and updates the `transform` property of the progress bar accordingly.
+For this use-case specifically, the following script applies the fallback for browsers that do not support scroll-driven animations. It uses a scroll listener to track the scroll position of the root element and updates the `transform` property of the progress bar accordingly. It relies on the base `#progress` styles living outside the `@supports` block (see the example above); otherwise the fallback scales an unstyled, zero-height element and draws nothing. Like the CSS, it only runs when the user has no reduced-motion preference. It sets the initial value immediately and treats a page that cannot scroll as fully read, avoiding a division by zero.
 
 ```html
 <script>
-  if (!CSS.supports('animation-timeline', 'scroll()')) {
+  if (
+    !CSS.supports('animation-timeline', 'scroll()') &&
+    matchMedia('(prefers-reduced-motion: no-preference)').matches
+  ) {
     const progress = document.querySelector('#progress');
 
-    window.addEventListener('scroll', () => {
+    const update = () => {
       const scrollable = document.documentElement.scrollHeight - window.innerHeight;
-      const scrolled = window.scrollY;
-      const progressPercentage = (scrolled / scrollable);
+      const progressPercentage = scrollable > 0 ? Math.min(1, window.scrollY / scrollable) : 1;
 
       progress.style.transform = `scaleX(${progressPercentage})`;
-    });
+    };
+
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
   }
 </script>
 ```
