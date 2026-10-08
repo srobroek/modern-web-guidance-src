@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
-import ghpages from 'gh-pages';
+import ghpages, { type Git } from 'gh-pages';
 import { buildDist } from './build-dist.ts';
 import { updateReadmeWithFeaturesAndUseCases, getFeaturesAndUseCases } from './build-readme.ts';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +22,44 @@ const GH_PUBLISH_PATTERNS = [
   '!THIRD_PARTY_NOTICES',
   '!skills/modern-web-guidance/package.json',
 ];
+
+/** Whether a path relative to dist/skills-cli/ is pushed to the GitHub distribution repo. */
+export function isPublishedToDistributionRepo(relPath: string): boolean {
+  return GH_PUBLISH_PATTERNS.every(pattern => {
+    if (pattern.startsWith('!')) {
+      return !minimatch(relPath, pattern.slice(1), { dot: true });
+    }
+    return minimatch(relPath, pattern, { dot: true });
+  });
+}
+
+type PackageManifest = { bin?: string | Record<string, string>; [key: string]: unknown };
+
+/**
+ * npm publishes all of dist/skills-cli/, so the root package.json keeps the CLI `bin`.
+ * The GitHub distribution repo omits bundled scripts (see GH_PUBLISH_PATTERNS), so any `bin`
+ * entry pointing at one of them is dropped there instead of referencing a missing file.
+ */
+export function withoutUnpublishedBins(manifest: PackageManifest): PackageManifest {
+  const { bin, ...rest } = manifest;
+  if (bin === undefined) {
+    return manifest;
+  }
+  // npm treats a string `bin` as a single command named after the package.
+  const bins = typeof bin === 'string' ? { [String(manifest.name)]: bin } : bin;
+  const publishedBins = Object.entries(bins)
+    .filter(([, target]) => isPublishedToDistributionRepo(path.posix.normalize(target)));
+  return publishedBins.length > 0 ? { ...rest, bin: Object.fromEntries(publishedBins) } : rest;
+}
+
+async function stripUnpublishedBins(git: Git): Promise<Git> {
+  // gh-pages runs this hook in its clone of the distribution repo after copying the files.
+  const { cwd } = git as Git & { cwd: string };
+  const manifestPath = path.join(cwd, 'package.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as PackageManifest;
+  await fs.writeFile(manifestPath, JSON.stringify(withoutUnpublishedBins(manifest), null, 2) + '\n');
+  return git;
+}
 
 const isDryRun = process.argv.includes('--dry-run');
 
@@ -96,6 +134,7 @@ async function publishToDistributionRepo(publishCliDir: string, newVersion: stri
         message: `Release v${newVersion}`,
         tag: `v${newVersion}`,
         src: GH_PUBLISH_PATTERNS,
+        beforeAdd: stripUnpublishedBins,
       },
       (err) => {
         if (err) {
@@ -175,14 +214,7 @@ async function main() {
     const filteredFiles = files
       .filter(f => !f.parentPath.includes('node_modules') && f.isFile())
       .map(f => path.relative(publishCliDir, path.join(f.parentPath, f.name)))
-      .filter(f => {
-        return GH_PUBLISH_PATTERNS.every(pattern => {
-          if (pattern.startsWith('!')) {
-            return !minimatch(f, pattern.slice(1), { dot: true });
-          }
-          return minimatch(f, pattern, { dot: true });
-        });
-      })
+      .filter(f => isPublishedToDistributionRepo(f))
       .sort((a,b) => a.localeCompare(b));
 
     console.log(`\n[Dry Run] Skipping GitHub publishing. Would push:\n - ${filteredFiles.join('\n - ')}`);
