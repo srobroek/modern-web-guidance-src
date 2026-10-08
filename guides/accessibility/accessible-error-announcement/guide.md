@@ -84,11 +84,14 @@ const updateAriaState = (event) => {
 };
 
 // Listen on the document to handle dynamically added fields.
-// 'blur' and 'focus' do not bubble, so we must use the capture phase (true).
+// 'blur', 'focus', and 'invalid' do not bubble, so we must use the capture phase (true).
 document.addEventListener('blur', updateAriaState, true);
 document.addEventListener('focus', updateAriaState, true);
+// A submit attempt makes every invalid field match :user-invalid, including fields the
+// user never touched, and fires 'invalid' on each of them.
+document.addEventListener('invalid', updateAriaState, true);
 
-// Also update on input if we've already shown the error, 
+// Also update on input if we've already shown the error,
 // so the error clears immediately when fixed.
 document.addEventListener('input', (event) => {
   const input = event.target;
@@ -100,11 +103,22 @@ document.addEventListener('input', (event) => {
     updateAriaState(event);
   }
 });
+
+// Resetting a form clears :user-invalid on its controls, so clear aria-invalid too.
+// Listen in the bubble phase so a form's own handler can cancel the reset first.
+document.addEventListener('reset', (event) => {
+  if (event.defaultPrevented || !(event.target instanceof HTMLFormElement)) return;
+  for (const control of event.target.elements) {
+    control.removeAttribute('aria-invalid');
+  }
+});
 ```
 
 ## Fallbacking & Browser Support
 
 {{ BASELINE_STATUS("user-pseudos") }}
+
+`:user-invalid` is Baseline Widely available, so the fallback below is **optional**. Add it only if your Baseline target includes browsers older than Chrome 119, Firefox 88, or Safari 16.5.
 
 ### Feature Detection
 You can check for support in CSS and JavaScript.
@@ -116,26 +130,31 @@ if (!CSS.supports('selector(:user-invalid)')) {
 }
 ```
 
-### CSS for Fallback
-To ensure your fallback logic is visually indistinguishable from the native behavior, you must apply your error styles to both the pseudo-class and your fallback class.
+### CSS for Fallback (optional)
+Apply your error styles to the pseudo-class and to your fallback class in **separate rules**. A browser that does not recognize `:user-invalid` drops every selector in the same selector list, so a combined rule would hide the fallback styles exactly where they are needed.
 
 ```css
-/* Apply error styles to both native selector and fallback class */
-input:user-invalid,
+/* Native: browsers that support :user-invalid */
+input:user-invalid {
+  border-color: #d93025;
+  background-color: #fce8e6;
+}
+input:user-invalid ~ .error-msg {
+  display: block;
+}
+
+/* Fallback: kept in its own rules so older browsers still apply it */
 input.user-invalid-fallback {
   border-color: #d93025;
   background-color: #fce8e6;
 }
-
-/* Show error message for both cases */
-input:user-invalid ~ .error-msg,
 input.user-invalid-fallback ~ .error-msg {
   display: block;
 }
 ```
 
-### Fallback Logic
-If `:user-invalid` is missing manually track the interaction state using a `WeakMap`.
+### Fallback Logic (optional)
+If `:user-invalid` is missing, manually track the interaction state using a `WeakMap`.
 
 ```javascript
 const UserInvalidFallback = (() => {
@@ -158,9 +177,9 @@ const UserInvalidFallback = (() => {
   const handleEvent = (event) => {
     const input = event.target;
 
-    if (event.type === 'reset' && input.matches?.('form')) {
-      const controls = input.elements || [];
-      for (const control of controls) {
+    if (event.type === 'reset') {
+      if (event.defaultPrevented || !input.matches?.('form')) return;
+      for (const control of input.elements) {
         dirtyState.delete(control);
         control.classList.remove('user-invalid-fallback');
         control.classList.remove('user-valid-fallback');
@@ -170,6 +189,13 @@ const UserInvalidFallback = (() => {
     }
 
     if (!input.matches?.('input, textarea, select')) return;
+
+    if (event.type === 'invalid') {
+      // A submit attempt shows errors on every invalid field, touched or not.
+      dirtyState.set(input, { hasInteracted: true, hasBlurred: true });
+      updateState(input);
+      return;
+    }
 
     if (event.type === 'input' || event.type === 'change') {
       const state = dirtyState.get(input) || { hasInteracted: false, hasBlurred: false };
@@ -194,7 +220,8 @@ const UserInvalidFallback = (() => {
     document.addEventListener('blur', handleEvent, true); // Capture phase required
     document.addEventListener('input', handleEvent, true);
     document.addEventListener('change', handleEvent, true);
-    document.addEventListener('reset', handleEvent, true); // Capture resets
+    document.addEventListener('invalid', handleEvent, true); // Fired per field on submit
+    document.addEventListener('reset', handleEvent); // Bubble phase, after form handlers
   };
 
   return { init };

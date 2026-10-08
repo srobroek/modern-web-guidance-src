@@ -41,9 +41,14 @@
 
     /* 
       Visual State - Native Browser Logic 
-      We duplicate styles for the fallback class to ensure consistency
+      The fallback class gets its own rules: a browser that does not recognize
+      :user-invalid drops every selector in a shared selector list.
     */
-    input:user-invalid,
+    input:user-invalid {
+      border-color: #d93025;
+      background-color: #fce8e6;
+    }
+
     input.user-invalid-fallback {
       border-color: #d93025;
       background-color: #fce8e6;
@@ -62,7 +67,10 @@
     }
 
     /* Show error if native selector matches OR fallback class is present */
-    input:user-invalid+.error-message,
+    input:user-invalid+.error-message {
+      display: block;
+    }
+
     input.user-invalid-fallback+.error-message {
       display: block;
     }
