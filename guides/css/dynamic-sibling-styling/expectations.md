@@ -7,3 +7,4 @@
 * The implementation uses `sibling-count()` to calculate proportions or distributions (e.g., for the color spectrum).
 * The implementation uses the total count to find the midpoint for a symmetrical effect (like a fan).
 * The implementation combines sibling functions with CSS trigonometry (`sin()`, `cos()`) for circular positioning.
+* The JavaScript fallback computes `--sibling-index` and `--sibling-count` per parent element from all element children (as the native functions do), not from a document-wide list.

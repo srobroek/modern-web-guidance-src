@@ -70,14 +70,27 @@ By combining these functions with CSS trigonometry (`sin()`, `cos()`), you can p
 
 If `sibling-index()` and `sibling-count()` are not supported, provide a fallback by injecting CSS custom properties via JavaScript. **MANDATORY:** Use feature detection with `CSS.supports()` to ensure the script only runs when necessary.
 
+The native functions count **all element children of each item's own parent**, not every matching element in the document. Compute the fallback per parent in the same way, and recompute when children are added, removed, or reordered.
+
 ```js
 /* MANDATORY: Check for native support before applying fallback */
 if (!CSS.supports('top: calc(sibling-index() * 1px)')) {
-  const items = document.querySelectorAll('.item');
-  items.forEach((item, index) => {
-    /* MANDATORY: Injected index must be 1-based to match native function */
-    item.style.setProperty('--sibling-index', index + 1);
-    item.style.setProperty('--sibling-count', items.length);
+  const syncSiblings = (parent) => {
+    const siblings = parent.children;
+    for (let i = 0; i < siblings.length; i++) {
+      /* MANDATORY: Injected index must be 1-based to match native function */
+      siblings[i].style.setProperty('--sibling-index', i + 1);
+      siblings[i].style.setProperty('--sibling-count', siblings.length);
+    }
+  };
+
+  const parents = new Set([...document.querySelectorAll('.item')].map((item) => item.parentElement));
+  const observer = new MutationObserver((records) => {
+    records.forEach((record) => syncSiblings(record.target));
+  });
+  parents.forEach((parent) => {
+    syncSiblings(parent);
+    observer.observe(parent, { childList: true });
   });
 }
 ```
