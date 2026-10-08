@@ -20,4 +20,10 @@ describe("getGuide", () => {
     assert.ok(guide);
     assert.ok(guide.includes("Semantic Structure and Form Element"));
   });
+
+  it("should resolve the retired prompt-api ID to the language-model guide", async () => {
+    const guide = await getGuide("prompt-api");
+    assert.ok(guide);
+    assert.strictEqual(guide, await getGuide("language-model"));
+  });
 });

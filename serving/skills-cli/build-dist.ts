@@ -168,17 +168,6 @@ async function main(opts: { publishRoot: string, version?: string}): Promise<Bui
     target: 'skills-cli',
   });
 
-  // Create a copy of language-model.md for prompt-api alias (regular file, not symlink, for archive compatibility)
-  const promptApiLink = path.join(DIST_DIR, "guides/built-in-ai/prompt-api.md");
-  const categoryDir = path.dirname(promptApiLink);
-  if (fs.existsSync(categoryDir)) {
-    if (fs.existsSync(promptApiLink)) {
-      fs.unlinkSync(promptApiLink);
-    }
-    fs.copyFileSync(path.join(categoryDir, "language-model.md"), promptApiLink);
-    console.log("Created prompt-api.md copy of language-model.md in distribution guides");
-  }
-
   fs.mkdirSync(ROOT_DIST_DIR, { recursive: true });
   const lockFilePath = path.join(ROOT_DIST_DIR, "build-dist.lock");
 

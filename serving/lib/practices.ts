@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import { existsSync } from "fs";
 import path from "path";
+import { resolveGuideId } from "./guide-aliases.ts";
 
 // Get current directory in ESM
 import { USE_CASES } from "./use-cases.gen.ts";
@@ -25,7 +26,8 @@ export function getUseCasesByCategory(category?: string): UseCase[] {
   return USE_CASES.filter((u) => u.category === category);
 }
 
-export async function getGuide(useCaseId: string): Promise<string | null> {
+export async function getGuide(requestedId: string): Promise<string | null> {
+  const useCaseId = resolveGuideId(requestedId);
   const useCase = USE_CASES.find((u) => u.id === useCaseId);
   if (!useCase) return null;
   const devGuidesDir = path.resolve(import.meta.dirname, "../build/guides");

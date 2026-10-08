@@ -46,6 +46,8 @@ describe('processSkills', () => {
     
     assert.ok(fs.existsSync(path.join(publishRoot, 'skills/modern-web-guidance/modern-web.mjs')), 'modern-web.mjs should exist');
     assert.ok(fs.existsSync(path.join(publishRoot, 'skills/modern-web-guidance/search.mjs')), 'search.mjs should exist');
+    // prompt-api is served as a retrieve alias (lib/guide-aliases.ts), not as a duplicate file.
+    assert.ok(!fs.existsSync(path.join(publishRoot, 'skills/modern-web-guidance/guides/built-in-ai/prompt-api.md')), 'prompt-api.md duplicate should not be shipped');
 
     // Verify standalone skills and their references exist
     assert.ok(fs.existsSync(path.join(publishRoot, 'skills/chrome-extensions/SKILL.md')), 'chrome-extensions SKILL.md should exist');
