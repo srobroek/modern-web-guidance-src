@@ -65,10 +65,16 @@
       if ('moveBefore' in Element.prototype) {
         targetParent.moveBefore(dialog, null);
       } else {
-        const wasOpen = dialog.hasAttribute('open');
+        // The traditional move drops the dialog out of the top layer but keeps its
+        // open attribute, so it comes back open and non-modal. showModal() on an open
+        // dialog throws InvalidStateError: close it first, then reopen it as modal.
+        const wasModal = dialog.matches(':modal');
+        const focused = dialog.contains(document.activeElement) ? document.activeElement : null;
         targetParent.insertBefore(dialog, null);
-        if (wasOpen) {
+        if (wasModal) {
+          dialog.close();
           dialog.showModal();
+          focused?.focus();
         }
       }
     });
