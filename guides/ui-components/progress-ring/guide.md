@@ -29,10 +29,10 @@ See the {{ GUIDE_REF("spinner") }} for handling indeterminate loading states.
 Use a wrapper to hold both the visual ring and the optional center content. The `<progress>` element remains the semantic source of truth. Use a utility class to visually hide the native progress bar while keeping it accessible.
 
 ```html
-<div class="ring-wrapper">
+<div class="progress-ring-wrapper">
   <progress value="75" max="100" aria-label="Task progress" class="progress-ring"></progress>
   <!-- Optional: Content to display in the center -->
-  <div class="ring-content">
+  <div class="progress-ring-content">
     75%
   </div>
 </div>
@@ -45,19 +45,19 @@ To style the `<progress>` element as a progress ring, first hide the default bro
 
 ```css
 /* Hide native bars */
-progress.loading-spinner:indeterminate::-webkit-progress-bar {
+progress.progress-ring::-webkit-progress-bar {
   display: none;
   background: none;
 }
-progress.loading-spinner:indeterminate::-webkit-progress-value {
+progress.progress-ring::-webkit-progress-value {
   display: none;
   background: none;
 }
-progress.loading-spinner:indeterminate::-moz-progress-bar {
+progress.progress-ring::-moz-progress-bar {
   display: none;
   background: none;
 }
-progress.loading-spinner:indeterminate::slider-fill {
+progress.progress-ring::slider-fill {
   display: none;
   background: none;
 }
@@ -82,8 +82,6 @@ progress.progress-ring {
   --value: attr(value type(<number>));
   width: var(--size);
   height: var(--size);
-
-  transition: --value 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   border-radius: 50%;
 
   background: conic-gradient(
@@ -92,9 +90,11 @@ progress.progress-ring {
   );
 
   /* MANDATORY: Clip the background to the border-area. */
-  background-clip: border-area;
-  border: var(--thickness) solid transparent;
-  background-origin: border-box;
+  @supports (background-clip: border-area) {
+    background-clip: border-area;
+    border: var(--thickness) solid transparent;
+    background-origin: border-box;
+  }
 }
 
 .progress-ring-content {
@@ -160,27 +160,34 @@ If the transition is absolutely necessary, you can check for `@property` support
 For browsers that don't yet support `background-clip: border-area`, fall back to a `mask-image` to hollow out the center of the `<progress>` element.
 
 ```css
-@supports not (background-clip: border-area) {
-  mask-image: radial-gradient(
-    transparent calc(50% - var(--thickness)),
-    black calc(50% - var(--thickness) + 0.5px)
-  );
-  border: 0;
+progress.progress-ring {
+  @supports not (background-clip: border-area) {
+    mask-image: radial-gradient(
+      transparent calc(50% - var(--thickness)),
+      black calc(50% - var(--thickness) + 0.5px)
+    );
+    border: 0;
+  }
 }
 ```
 
 {{ FEATURE_FALLBACKS("attr") }}
 
-For browsers that don't support the `attr()` CSS function for any property, use a `MutationObserver` to automatically sync the `value` attribute to the `--value` custom property.
+For browsers that don't support the `attr()` CSS function for any property, use a `MutationObserver` to automatically sync the `value` attribute to the `--value` custom property. Set the initial value as well, because the observer only reports later changes.
 
 ```js
+const progress = document.querySelector("progress.progress-ring");
+
 if (!CSS.supports("width: attr(value type(<number>))")) {
-  const observer = new MutationObserver(() => {
+  const syncValue = () => {
     progress.style.setProperty("--value", progress.getAttribute("value"));
-  });
+  };
+  const observer = new MutationObserver(syncValue);
   observer.observe(progress, {
     attributes: true,
     attributeFilter: ["value"],
   });
+  // Seed the current value; the observer only fires on later changes.
+  syncValue();
 }
 ```
