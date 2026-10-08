@@ -67,25 +67,9 @@ LCP measures the time required to render the largest visible text or image block
 *   **DON'T overuse `fetchpriority="high"`**: Prioritization is a zero-sum mechanism. Elevating too many resources creates network contention and negates the benefit.
 *   **DON'T implement complex JavaScript loaders for the hero section**: Client-side rendering of the LCP element introduces substantial request chains (HTML -> JS -> Execution -> Image Request).
 
-### Code Examples
+### Further guidance
 
-**HTML: LCP Image Optimization**
-```html
-<!-- Standard LCP Image -->
-<img 
-  src="/images/hero.webp" 
-  alt="Hero Product" 
-  fetchpriority="high" 
-  width="1200" 
-  height="600"
->
-
-<!-- Preloading a CSS-based LCP background -->
-<link rel="preload" as="image" href="/images/bg-hero.webp" fetchpriority="high" type="image/webp">
-
-<!-- Demoting an above-the-fold non-LCP carousel image -->
-<img src="/images/carousel-2.webp" fetchpriority="low" loading="lazy" alt="Slide 2">
-```
+For LCP and carousel image markup, see {{ GUIDE_REF("optimize-image-priority") }}. For preloading CSS background images and other late-discovered resources, see {{ GUIDE_REF("optimize-preload-priority") }}.
 
 ## Interaction to Next Paint (INP) & Main Thread Unblocking
 
@@ -102,30 +86,9 @@ INP measures the latency of all interactive events across the page's lifecycle. 
 *   **DON'T cause layout thrashing**: Avoid interleaving DOM reads (`offsetHeight`, `getBoundingClientRect`) and writes (`style.height`) within the same loop. Batch DOM reads, then batch DOM writes.
 *   **DON'T block the thread with recurring timers**: Avoid heavy polling with `setInterval` that starves the main thread.
 
-### Code Examples
+### Further guidance
 
-**JS: `scheduler.yield` Polyfill and Usage**
-```javascript
-// Polyfill for yielding to main thread
-async function yieldToMain() {
-  if ('scheduler' in window && 'yield' in scheduler) {
-    return await scheduler.yield();
-  }
-  return new Promise(resolve => setTimeout(resolve, 0));
-}
-
-// Processing a large array without blocking user input
-async function processLargeList(items) {
-  for (let i = 0; i < items.length; i++) {
-    processItem(items[i]);
-    
-    // Yield every 50 iterations to allow rendering/interaction
-    if (i % 50 === 0) {
-      await yieldToMain();
-    }
-  }
-}
-```
+For a `scheduler.yield()` loop with a feature-detected `setTimeout` fallback, see {{ GUIDE_REF("break-up-long-tasks") }}. To run work at different priorities, see {{ GUIDE_REF("schedule-tasks-by-priority") }}.
 
 ### Main Thread Task Slicing Heuristic
 
@@ -147,7 +110,7 @@ Third-party scripts (analytics, ads, chat widgets) are the primary source of mai
 **HTML: Third-Party Script Execution**
 ```html
 <!-- 1. Place third-party scripts near the end of the page with the defer attribute -->
-<script defer src="http://www.example.com/third-party.js"></script>
+<script defer src="https://www.example.com/third-party.js"></script>
 ```
 
 ## CSS Rendering & Containment Optimization
@@ -168,14 +131,10 @@ Rendering involves Layout, Style, Paint, and Compositing calculations. CSS Conta
 
 ### Code Examples
 
+For deferring off-screen sections, see {{ GUIDE_REF("defer-rendering-heavy-content") }}. For containing layout work during interactions in large layouts, see {{ GUIDE_REF("interactions-in-complex-layouts") }}.
+
 **CSS: Content Visibility and Containment**
 ```css
-/* Optimize a long list of articles below the fold */
-.article-list-item {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 600px; /* Provides a 600px placeholder */
-}
-
 .row {
   --row-gap: .4rem;
   --title-height: 1lh;
@@ -259,7 +218,7 @@ Client-side caching via Service Workers allows applications to bypass the networ
 *   **DO restrict cache sizes and expiry**: Use expiration plugins to prevent the Service Worker from exhausting the device's storage quota.
 
 ### DON'Ts
-*   **DON'T cache opaque responses blindly**: Responses from third-party domains lacking CORS headers are "opaque". Caching them heavily consumes quota and fails silently. Only cache them using `NetworkFirst` or `StaleWhileRevalidate`.
+*   **DON'T cache opaque responses blindly**: Responses to cross-origin `no-cors` requests (for example `<script>` or `<link rel="stylesheet">` without `crossorigin`) are "opaque": you cannot read their status, so an error can be cached as if it succeeded, and browsers pad their size when counting storage quota (in Chrome, at least about 7 MB each). Only cache them with `NetworkFirst` or `StaleWhileRevalidate`, which replace a failed response on the next request, and never with `CacheFirst` or `CacheOnly`.
 *   **DON'T cache POST requests**: Service workers cannot cache non-GET requests natively. Implement background sync queues for offline submissions.
 *   **DON'T bypass versioning**: Failing to update asset hashes/versions will trap users in infinite cache loops.
 *   **DON'T use `Cache-Control: no-store` for non-sensitive resources**: This directive prevents the browser from storing the page in the **Back-Forward Cache (bfcache)**, leading to significantly slower perceived performance. Use it only for truly private data, and use `Cache-Control: no-cache` or `Cache-Control: max-age=0` for pages that simply need to serve up-to-date content.
@@ -276,28 +235,48 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 // 1. HTML Documents: Network First
 registerRoute(
   ({ request }) => request.mode === 'navigate',
-  new NetworkFirst({ cacheName: 'pages-cache' })
+  new NetworkFirst({
+    cacheName: 'pages-cache',
+    plugins: [new ExpirationPlugin({ maxEntries: 50 })]
+  })
 );
 
-// 2. Static Assets (JS, CSS, Fonts): Cache First
+// 2. Same-origin static assets (JS, CSS, fonts): Cache First.
+//    Only status 200 is cacheable, so an opaque or failed response is never pinned in the cache.
 registerRoute(
-  ({ request }) => ['style', 'script', 'font'].includes(request.destination),
+  ({ request, url }) =>
+    url.origin === self.location.origin &&
+    ['style', 'script', 'font'].includes(request.destination),
   new CacheFirst({
     cacheName: 'static-resources',
     plugins: [
-      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new CacheableResponsePlugin({ statuses: [200] }),
       new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 30 * 24 * 60 * 60 })
     ]
   })
 );
 
-// 3. API Responses: Stale While Revalidate
+// 3. Same-origin API responses: Stale While Revalidate, bounded in size and age.
 registerRoute(
-  ({ url }) => url.pathname.startsWith('/api/v1/content'),
+  ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/api/v1/content'),
   new StaleWhileRevalidate({
     cacheName: 'api-cache',
     plugins: [
-      new CacheableResponsePlugin({ statuses: [0, 200] })
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 24 * 60 * 60 })
+    ]
+  })
+);
+
+// 4. Cross-origin assets that may be opaque: Stale While Revalidate only,
+//    with a small entry limit because each opaque response is padded in the quota.
+registerRoute(
+  ({ url }) => url.origin === 'https://cdn.example.com',
+  new StaleWhileRevalidate({
+    cacheName: 'third-party-cache',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 20, maxAgeSeconds: 7 * 24 * 60 * 60, purgeOnQuotaError: true })
     ]
   })
 );

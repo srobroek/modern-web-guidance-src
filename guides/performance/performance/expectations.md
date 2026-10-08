@@ -48,3 +48,5 @@
 - The implementation MUST NOT auto-play large video files without user intent.
 - The implementation MUST use dynamic imports (`import()`) to load code on demand if code splitting is beneficial.
 - The implementation MUST configure bundler asset chunking to split third-party vendors.
+- If the Service Worker caches opaque (status 0) responses, it does so only with `NetworkFirst` or `StaleWhileRevalidate`; `CacheFirst` and `CacheOnly` routes cache status 200 responses only.
+- Every runtime cache the Service Worker writes, including API response caches, is bounded by an entry limit or maximum age (for example Workbox's `ExpirationPlugin`).
