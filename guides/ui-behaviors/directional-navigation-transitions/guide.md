@@ -111,6 +111,8 @@ Always respect user preferences for reduced motion by disabling or simplifying a
 
 The View Transitions API is a progressive enhancement. In unsupported browsers, `document.startViewTransition` will be `undefined`. You must wrap your navigation logic in a feature detection check to ensure the DOM update still occurs immediately without animation, as shown in this helper function.
 
+Transition types arrived later than the API itself: browsers that have `startViewTransition()` but not types (Chrome and Edge 111-124, Safari 18.0-18.1) only accept a callback, so passing them the options object throws a `TypeError` and the DOM update never runs. Detect types through `ViewTransition.prototype.types` and fall back to the callback form, which gives those browsers the default cross-fade.
+
 ```javascript
 /**
  * Navigates to a new view with a directional transition.
@@ -121,6 +123,12 @@ function navigate(updateDOM, direction) {
   // Feature detect for browsers that do not support View Transitions
   if (!document.startViewTransition) {
     updateDOM();
+    return;
+  }
+
+  // Browsers without transition types reject the options object
+  if (!('types' in ViewTransition.prototype)) {
+    document.startViewTransition(updateDOM);
     return;
   }
 
