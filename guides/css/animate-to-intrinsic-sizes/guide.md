@@ -90,13 +90,20 @@ You can also animate in the opposite direction—starting from a natural size an
 ```
 
 ```javascript
-// MANDATORY Accessibility Synchronization: Ensure elements collapsed to zero dimensions are removed from the assistive technology tree, and sync aria-expanded states on triggers.
+// MANDATORY Accessibility Synchronization: Remove dismissed elements from the assistive technology tree, and sync aria-expanded states on triggers.
+// Do not rely on `transitionend` alone: no transition runs under `prefers-reduced-motion: reduce`
+// (transition: none) or in browsers without keyword interpolation, so the event never fires.
 const alertElement = document.querySelector('.collapsible-alert');
-alertElement.addEventListener('transitionend', (e) => {
-  if (e.propertyName === 'block-size' && alertElement.classList.contains('is-dismissed')) {
-    alertElement.hidden = true;
-  }
-});
+
+async function dismissAlert() {
+  alertElement.classList.add('is-dismissed');
+  // Remove from the accessibility tree and focus order immediately, while the collapse plays.
+  alertElement.inert = true;
+  // getAnimations() flushes the style change, so it lists only the transitions that actually started.
+  const running = alertElement.getAnimations();
+  await Promise.allSettled(running.map((animation) => animation.finished));
+  alertElement.hidden = true;
+}
 
 // Example trigger syncer
 const triggerBtn = document.querySelector('.accordion-trigger');

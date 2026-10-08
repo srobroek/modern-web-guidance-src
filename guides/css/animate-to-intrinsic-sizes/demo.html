@@ -255,23 +255,22 @@
       btn.setAttribute('aria-expanded', isExpanded);
     }
 
-    function dismissAlert(id) {
-      document.getElementById(id).classList.add('is-dismissed');
+    async function dismissAlert(id) {
+      const alertEl = document.getElementById(id);
+      alertEl.classList.add('is-dismissed');
+      alertEl.inert = true;
+      // No transition runs under reduced motion, so wait only for transitions that started.
+      await Promise.allSettled(alertEl.getAnimations().map((a) => a.finished));
+      if (alertEl.classList.contains('is-dismissed')) alertEl.hidden = true;
     }
 
     function resetAlert(id) {
       const alertEl = document.getElementById(id);
       alertEl.hidden = false;
+      alertEl.inert = false;
       alertEl.offsetHeight; // Trigger reflow
       alertEl.classList.remove('is-dismissed');
     }
-
-    document.getElementById('promo-alert').addEventListener('transitionend', (e) => {
-      const alertEl = e.currentTarget;
-      if (e.propertyName === 'block-size' && alertEl.classList.contains('is-dismissed')) {
-        alertEl.hidden = true;
-      }
-    });
   </script>
 
 </body>
