@@ -352,10 +352,12 @@ function toggleWidgetState() {
 | :--- | :--- | :--- | :--- | :--- |
 | **Visible to all** | Yes | Yes | Yes | Standard rendering |
 | **Screen Reader only** | No | Yes | Yes (if interactive) | Visually hidden utility (e.g. `.visually-hidden`) |
-| **Visual only** | Yes | No | No | `aria-hidden="true"` / `role="presentation"` |
+| **Visual only** | Yes | No | No | `aria-hidden="true"` (or `alt=""` for a decorative `<img>`) |
 | **Hidden for all** | No | No | No | `hidden` attribute / `display: none` |
 
 **Heuristic Rule**: If an element can receive keyboard focus, it must not be hidden via `aria-hidden="true"`.
+
+**DO NOT** use `role="presentation"` or `role="none"` to hide content. They remove only the element's own semantics (for example, a table's table role); its text content and descendants stay exposed to screen readers.
 
 ## 7. Forms and Input Controls
 
