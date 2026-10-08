@@ -8,9 +8,11 @@ import {
   buildMarker,
   parseMarker,
   buildIssue,
+  resolveUseCaseMetadata,
   planIssues,
   type Gap,
   type ExistingIssue,
+  type UseCaseIssue,
 } from './eval-gap-watch.ts';
 import { rootDir } from '../lib/paths.ts';
 import type { GuideInventory } from '../lib/guide-validation.ts';
@@ -172,5 +174,104 @@ describe('planIssues', () => {
     const plan = planIssues([changed], [issueFor(gap, { number: 1 })]);
     assert.deepStrictEqual(plan.toCreate, [changed]);
     assert.strictEqual(plan.toClose[0].number, 1);
+  });
+
+  it('plans priority label and milestone updates for open eval-gap issues from their use case issue', () => {
+    const useCases: UseCaseIssue[] = [
+      {
+        number: 100,
+        title: 'Create guide and evals for the sample-guide use case',
+        body: 'Use case subdir: [guides/css/sample-guide](https://github.com/...)',
+        state: 'OPEN',
+        labels: [{ name: 'new-use-case' }, { name: 'P0' }],
+        milestone: { title: '1.0 launch' },
+      },
+    ];
+    const openEvalGap = issueFor(gap, {
+      number: 7,
+      labels: [{ name: 'eval-gap' }, { name: 'P1' }],
+      milestone: null,
+    });
+    const plan = planIssues([gap], [openEvalGap], useCases);
+    assert.deepStrictEqual(plan.toUpdate, [
+      {
+        issueNumber: 7,
+        title: openEvalGap.title,
+        addLabels: ['P0'],
+        removeLabels: ['P1'],
+        milestoneTitle: '1.0 launch',
+      },
+    ]);
+  });
+
+  it('does not plan updates when open eval-gap issue already matches use case priority and milestone', () => {
+    const useCases: UseCaseIssue[] = [
+      {
+        number: 100,
+        title: 'Create guide and evals for the sample-guide use case',
+        body: 'Use case subdir: [guides/css/sample-guide](https://github.com/...)',
+        state: 'OPEN',
+        labels: ['new-use-case', 'P0'],
+        milestone: { title: '1.0 launch' },
+      },
+    ];
+    const openEvalGap = issueFor(gap, {
+      number: 7,
+      labels: ['eval-gap', 'P0'],
+      milestone: { title: '1.0 launch' },
+    });
+    const plan = planIssues([gap], [openEvalGap], useCases);
+    assert.deepStrictEqual(plan.toUpdate, []);
+  });
+});
+
+describe('resolveUseCaseMetadata', () => {
+  it('extracts priority label and milestone from matching use case subdir', () => {
+    const useCases: UseCaseIssue[] = [
+      {
+        number: 1454,
+        title: 'Create guide and evals for the css use case',
+        body: 'Use case subdir: [guides/css/css](https://github.com/...)',
+        state: 'OPEN',
+        labels: [{ name: 'new-use-case' }, { name: 'P0' }],
+        milestone: { title: '1.0 launch' },
+      },
+    ];
+    assert.deepStrictEqual(resolveUseCaseMetadata('guides/css/css', 'css', useCases), {
+      priorityLabel: 'P0',
+      milestoneTitle: '1.0 launch',
+    });
+  });
+
+  it('prefers an open use case issue over a closed duplicate', () => {
+    const useCases: UseCaseIssue[] = [
+      {
+        number: 10,
+        title: 'Create guide and evals for the sample-guide use case',
+        body: 'Use case subdir: [guides/css/sample-guide](https://github.com/...)',
+        state: 'CLOSED',
+        labels: ['new-use-case'],
+        milestone: { title: 'I/O' },
+      },
+      {
+        number: 20,
+        title: 'Create guide and evals for the sample-guide use case',
+        body: 'Use case subdir: [guides/css/sample-guide](https://github.com/...)',
+        state: 'OPEN',
+        labels: ['new-use-case', 'P1'],
+        milestone: { title: '1.0 launch' },
+      },
+    ];
+    assert.deepStrictEqual(resolveUseCaseMetadata('guides/css/sample-guide', 'sample-guide', useCases), {
+      priorityLabel: 'P1',
+      milestoneTitle: '1.0 launch',
+    });
+  });
+
+  it('returns null priority and milestone when no use case issue matches', () => {
+    assert.deepStrictEqual(resolveUseCaseMetadata('guides/css/missing', 'missing', []), {
+      priorityLabel: null,
+      milestoneTitle: null,
+    });
   });
 });

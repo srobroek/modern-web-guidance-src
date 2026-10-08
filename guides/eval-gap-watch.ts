@@ -31,6 +31,8 @@ import { rootDir } from '../lib/paths.ts';
 
 export const EVAL_OWNERS = ['micahjo7', 'TravenReese'];
 export const EVAL_GAP_LABEL = 'eval-gap';
+export const USE_CASE_LABEL = 'new-use-case';
+const PRIORITY_LABEL_REGEX = /^P\d+$/;
 
 export type GapKind = 'missing-evals' | 'expectations-changed';
 
@@ -46,6 +48,31 @@ export interface ExistingIssue {
   number: number;
   body: string;
   title: string;
+  labels?: Array<{ name: string } | string>;
+  milestone?: { title: string } | null;
+}
+
+/** A new-use-case issue used to carry priority and milestone forward to eval-gap issues. */
+export interface UseCaseIssue {
+  number: number;
+  title: string;
+  body: string;
+  state?: string;
+  labels?: Array<{ name: string } | string>;
+  milestone?: { title: string } | null;
+}
+
+export interface UseCaseMetadata {
+  priorityLabel: string | null;
+  milestoneTitle: string | null;
+}
+
+export interface MetadataUpdate {
+  issueNumber: number;
+  title: string;
+  addLabels: string[];
+  removeLabels: string[];
+  milestoneTitle: string | null;
 }
 
 // --- Detection ---
@@ -129,15 +156,57 @@ export function buildIssue(gap: Gap): { title: string; body: string } {
   return { title, body };
 }
 
+function getLabelNames(labels: Array<{ name: string } | string> = []): string[] {
+  return labels.map(l => (typeof l === 'string' ? l : l.name));
+}
+
+function isOpenState(state?: string): boolean {
+  return !state || state.toLowerCase() === 'open';
+}
+
+/**
+ * Resolves the priority label (`P0`/`P1`/`P2`) and milestone title from a guide's
+ * `new-use-case` issue so `eval-gap` issues inherit the use case's priority.
+ */
+export function resolveUseCaseMetadata(
+  guidePath: string,
+  guideName: string,
+  useCaseIssues: UseCaseIssue[]
+): UseCaseMetadata {
+  let matched: UseCaseIssue | undefined;
+  for (const issue of useCaseIssues) {
+    const subdirMatch = issue.body?.match(/Use case subdir: \[([^\]]+)\]/);
+    const titleMatch = issue.title.match(/Create guide and evals for the (.+) use case/);
+    const matchesPath = subdirMatch?.[1]?.trim() === guidePath;
+    const matchesName = !subdirMatch && titleMatch?.[1]?.trim() === guideName;
+    if (matchesPath || matchesName) {
+      if (!matched || (!isOpenState(matched.state) && isOpenState(issue.state))) {
+        matched = issue;
+      }
+    }
+  }
+
+  if (!matched) {
+    return { priorityLabel: null, milestoneTitle: null };
+  }
+
+  const priorityLabel = getLabelNames(matched.labels).find(l => PRIORITY_LABEL_REGEX.test(l)) ?? null;
+  const milestoneTitle = matched.milestone?.title ?? null;
+  return { priorityLabel, milestoneTitle };
+}
+
 // --- Planning ---
 
 /**
- * Returns the issues to file and close, given the currently open issues. A gap
- * with an open issue is left alone. Only `missing-evals` auto-closes, since it
- * is recomputed from the tree every run; `expectations-changed` is a
- * point-in-time alert a human closes.
+ * Returns the issues to file, close, and update, given the currently open issues.
+ * Only `missing-evals` auto-closes, since it is recomputed from the tree every run;
+ * `expectations-changed` is a point-in-time alert a human closes.
  */
-export function planIssues(gaps: Gap[], existing: ExistingIssue[]): { toCreate: Gap[]; toClose: ExistingIssue[] } {
+export function planIssues(
+  gaps: Gap[],
+  existing: ExistingIssue[],
+  useCaseIssues: UseCaseIssue[] = []
+): { toCreate: Gap[]; toClose: ExistingIssue[]; toUpdate: MetadataUpdate[] } {
   const openIssues = new Map<string, ExistingIssue>();
   for (const issue of existing) {
     const marker = parseMarker(issue.body);
@@ -145,12 +214,45 @@ export function planIssues(gaps: Gap[], existing: ExistingIssue[]): { toCreate: 
   }
 
   const gapKeys = new Set(gaps.map(g => `${g.kind}:${g.guidePath}`));
+  const toClose = [...openIssues]
+    .filter(([key]) => key.startsWith('missing-evals:') && !gapKeys.has(key))
+    .map(([, issue]) => issue);
+  const closingNumbers = new Set(toClose.map(i => i.number));
+
+  const toUpdate: MetadataUpdate[] = [];
+  if (useCaseIssues.length > 0) {
+    for (const issue of existing) {
+      if (closingNumbers.has(issue.number) || !issue.labels) continue;
+      const marker = parseMarker(issue.body);
+      if (!marker) continue;
+      const guideName = path.basename(marker.guidePath);
+      const metadata = resolveUseCaseMetadata(marker.guidePath, guideName, useCaseIssues);
+      const currentPrios = getLabelNames(issue.labels).filter(l => PRIORITY_LABEL_REGEX.test(l));
+      const addLabels = metadata.priorityLabel && !currentPrios.includes(metadata.priorityLabel)
+        ? [metadata.priorityLabel]
+        : [];
+      const removeLabels = currentPrios.filter(l => l !== metadata.priorityLabel);
+      const currentMilestone = issue.milestone?.title ?? null;
+      const milestoneTitle = metadata.milestoneTitle && currentMilestone !== metadata.milestoneTitle
+        ? metadata.milestoneTitle
+        : null;
+
+      if (addLabels.length > 0 || removeLabels.length > 0 || milestoneTitle !== null) {
+        toUpdate.push({
+          issueNumber: issue.number,
+          title: issue.title,
+          addLabels,
+          removeLabels,
+          milestoneTitle,
+        });
+      }
+    }
+  }
 
   return {
     toCreate: gaps.filter(g => !openIssues.has(`${g.kind}:${g.guidePath}`)),
-    toClose: [...openIssues]
-      .filter(([key]) => key.startsWith('missing-evals:') && !gapKeys.has(key))
-      .map(([, issue]) => issue),
+    toClose,
+    toUpdate,
   };
 }
 
@@ -172,18 +274,51 @@ export const githubApi = {
   listIssues(): ExistingIssue[] {
     const output = child_process.execFileSync(
       'gh',
-      ['issue', 'list', '--label', EVAL_GAP_LABEL, '--state', 'open', '--limit', '500', '--json', 'number,body,title'],
+      ['issue', 'list', '--label', EVAL_GAP_LABEL, '--state', 'open', '--limit', '500', '--json', 'number,body,title,labels,milestone'],
       { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }
     );
     return (JSON.parse(output) as ExistingIssue[]).map(i => ({ ...i, body: i.body ?? '' }));
   },
 
-  createIssue(title: string, body: string): void {
-    child_process.execFileSync(
+  listUseCaseIssues(): UseCaseIssue[] {
+    const output = child_process.execFileSync(
       'gh',
-      ['issue', 'create', '--title', title, '--body', body, '--label', EVAL_GAP_LABEL, '--assignee', EVAL_OWNERS.join(',')],
-      { stdio: 'inherit' }
+      ['issue', 'list', '--label', USE_CASE_LABEL, '--state', 'all', '--limit', '1000', '--json', 'number,title,body,state,labels,milestone'],
+      { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }
     );
+    return (JSON.parse(output) as UseCaseIssue[]).map(i => ({ ...i, body: i.body ?? '' }));
+  },
+
+  createIssue(title: string, body: string, metadata?: UseCaseMetadata): void {
+    const labels = [EVAL_GAP_LABEL, ...(metadata?.priorityLabel ? [metadata.priorityLabel] : [])];
+    const args = [
+      'issue',
+      'create',
+      '--title',
+      title,
+      '--body',
+      body,
+      '--label',
+      labels.join(','),
+      '--assignee',
+      EVAL_OWNERS.join(','),
+      ...(metadata?.milestoneTitle ? ['--milestone', metadata.milestoneTitle] : []),
+    ];
+    child_process.execFileSync('gh', args, { stdio: 'inherit' });
+  },
+
+  updateIssue(update: MetadataUpdate): void {
+    const args = ['issue', 'edit', String(update.issueNumber)];
+    if (update.addLabels.length > 0) {
+      args.push('--add-label', update.addLabels.join(','));
+    }
+    if (update.removeLabels.length > 0) {
+      args.push('--remove-label', update.removeLabels.join(','));
+    }
+    if (update.milestoneTitle) {
+      args.push('--milestone', update.milestoneTitle);
+    }
+    child_process.execFileSync('gh', args, { stdio: 'inherit' });
   },
 
   closeIssue(issueNumber: number): void {
@@ -210,9 +345,10 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const gaps = [...findMissingEvals(guides), ...findChangedExpectations(guides, changedFiles)];
   console.log(`Scanned ${guides.length} guides and ${changedFiles.length} changed file(s), found ${gaps.length} gap(s).`);
 
-  const { toCreate, toClose } = planIssues(gaps, githubApi.listIssues());
+  const useCaseIssues = githubApi.listUseCaseIssues();
+  const { toCreate, toClose, toUpdate } = planIssues(gaps, githubApi.listIssues(), useCaseIssues);
 
-  if (toCreate.length === 0 && toClose.length === 0) {
+  if (toCreate.length === 0 && toClose.length === 0 && toUpdate.length === 0) {
     console.log('✅ No changes needed.');
     return;
   }
@@ -221,11 +357,22 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
 
   for (const gap of toCreate) {
     const { title, body } = buildIssue(gap);
+    const metadata = resolveUseCaseMetadata(gap.guidePath, gap.guideName, useCaseIssues);
     if (dryRun) {
-      console.log(`[DRY RUN] Would file "${title}"`);
+      const labelInfo = [EVAL_GAP_LABEL, ...(metadata.priorityLabel ? [metadata.priorityLabel] : [])].join(', ');
+      const milestoneInfo = metadata.milestoneTitle ? `, milestone="${metadata.milestoneTitle}"` : '';
+      console.log(`[DRY RUN] Would file "${title}" (labels=[${labelInfo}]${milestoneInfo})`);
       continue;
     }
-    githubApi.createIssue(title, body);
+    githubApi.createIssue(title, body, metadata);
+  }
+
+  for (const update of toUpdate) {
+    if (dryRun) {
+      console.log(`[DRY RUN] Would update #${update.issueNumber} ("${update.title}"): +[${update.addLabels.join(', ')}] -[${update.removeLabels.join(', ')}]${update.milestoneTitle ? ` milestone="${update.milestoneTitle}"` : ''}`);
+      continue;
+    }
+    githubApi.updateIssue(update);
   }
 
   for (const issue of toClose) {
