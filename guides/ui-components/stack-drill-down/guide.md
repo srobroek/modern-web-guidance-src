@@ -97,6 +97,11 @@ The stack is a horizontal grid where each child view is exactly the width of the
      the address bar can show/hide. svh would clip during the address bar
      animation; vh leaks under it. */
   height: 100dvh;
+  /* Hide the visual scrollbar — the snap and the parallax are the
+     affordances; a horizontal scrollbar would look out of place.
+     scrollbar-width is the standard property; ::-webkit-scrollbar below
+     covers older WebKit/Blink versions. */
+  scrollbar-width: none;
 
   /* Lay views out left-to-right, each one full-width, so horizontal
      scrolling moves between them one at a time. */
@@ -115,8 +120,7 @@ The stack is a horizontal grid where each child view is exactly the width of the
   overscroll-behavior-x: none;
 }
 
-/* Hide the visual scrollbar — the snap and the parallax are the
-   affordances; a horizontal scrollbar would look out of place. */
+/* Older Safari and Chrome versions without scrollbar-width. */
 .Stack::-webkit-scrollbar {
   display: none;
 }
@@ -162,8 +166,10 @@ A scroll-driven `view(inline)` animation tracks each view's progress through the
    scroll-driven animations still parse the @keyframes and would
    apply the `to` state as a static style, leaving every view
    permanently transformed. The @supports gate confines the animation
-   to browsers where it actually animates. */
-@supports (animation-timeline: view()) {
+   to browsers where it actually animates. The (animation-range: entry)
+   check MUST be included to filter out partial implementations that
+   support animation-timeline without animation-range. */
+@supports ((animation-timeline: view()) and (animation-range: entry)) {
   .Stack-viewContent {
     /* view(inline) tracks this element's progress through its nearest
        scrollable ancestor on the inline (x) axis. */
@@ -245,9 +251,11 @@ Plus three application-specific helpers — the only places where your app's rou
 ```js
 // Resolve a URL path to the data your app needs to render the
 // corresponding drill-down view, or return null for paths this section
-// of the app does not handle (the root path '/', external links,
-// unknown routes). resolveUrl() is for drill-down routes only — the
-// root view is rendered separately by createRootView() below.
+// of the app does not handle (the root path '/', unknown routes).
+// resolveUrl() only sees a path, so the click handler (step 5) filters
+// out cross-origin links before calling it. resolveUrl() is for
+// drill-down routes only — the root view is rendered separately by
+// createRootView() below.
 function resolveUrl(urlPath) {
   // Replace with your routing logic. For example, match `/view/:id`
   // and look the id up in your app state.
@@ -354,7 +362,16 @@ stack.addEventListener('click', (e) => {
   // in new tabs / windows. e.button !== 0 filters out middle-clicks.
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
 
-  const urlPath = new URL(link.href).pathname;
+  // Only intercept same-origin, same-tab links that this path-based
+  // router can represent. Comparing pathnames alone would hijack a link
+  // to the same path on another origin. Links with a target or download
+  // attribute, or with a query string or fragment (which the path-only
+  // history state would drop), navigate normally.
+  const url = new URL(link.href);
+  if (url.origin !== location.origin) return;
+  if ((link.target && link.target !== '_self') || link.hasAttribute('download')) return;
+  if (url.search || url.hash) return;
+  const urlPath = url.pathname;
   const parentView = link.closest('.Stack-view');
   // If the URL isn't handled by this section of the app (resolveUrl
   // returns null), fall through so the browser navigates normally.
@@ -372,8 +389,10 @@ stack.addEventListener('click', (e) => {
 // is no in-app history entry behind it. Calling history.back() in that
 // situation would take them out of the app entirely. MANDATORY: detect
 // this case and synthesize a root entry instead, so an in-app Back from
-// a deep link lands on the root view and the platform Back from there
-// returns the user to where they came from.
+// a deep link lands on the root view. The synthesized root entry is
+// pushed AFTER the deep-linked entry, so the platform Back from the root
+// view returns to the deep-linked view, and a second platform Back
+// leaves the app.
 function goBack() {
   const atDeepLinkRoot = currentDepth === 0
     && entriesByDepth.get(0)?.view !== rootView;
@@ -671,12 +690,12 @@ if (!('onscrollsnapchange' in HTMLElement.prototype)) {
 
 {{ FEATURE_FALLBACKS("scroll-driven-animations") }}
 
-The scroll-driven parallax / dim / shadow effect is a progressive enhancement on top of the navigation core. The CSS `@supports (animation-timeline: view())` gate (shown in step 2) confines the animation to supporting browsers; everywhere else the views simply cut between snap stops with no transition. The component is fully functional without the parallax — snap, history sync, focus management, and `inert` all still work.
+The scroll-driven parallax / dim / shadow effect is a progressive enhancement on top of the navigation core. The CSS `@supports ((animation-timeline: view()) and (animation-range: entry))` gate (shown in step 2) confines the animation to supporting browsers; everywhere else the views simply cut between snap stops with no transition. The component is fully functional without the parallax — snap, history sync, focus management, and `inert` all still work.
 
 If a parallax fallback is required for older baseline targets, attach a `scroll` listener to the stack and write a CSS custom property describing each view's progress through the scrollport, then drive `transform` and `filter` from that property:
 
 ```js
-if (!CSS.supports('animation-timeline: view()')) {
+if (!CSS.supports('(animation-timeline: view()) and (animation-range: entry)')) {
   stack.addEventListener('scroll', () => {
     const viewWidth = stack.clientWidth;
     for (const view of stack.children) {

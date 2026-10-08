@@ -65,6 +65,7 @@
     @layer demo {
       .Stack {
         height: 100dvh;
+        scrollbar-width: none;
 
         display: grid;
         grid-auto-flow: column;
@@ -75,6 +76,7 @@
         overscroll-behavior-x: none;
       }
 
+      /* Older Safari and Chrome versions without scrollbar-width. */
       .Stack::-webkit-scrollbar {
         display: none;
       }
@@ -108,7 +110,7 @@
         box-shadow: 0 0 1.5rem #0004;
       }
 
-      @supports (animation-timeline: view()) {
+      @supports ((animation-timeline: view()) and (animation-range: entry)) {
         .Stack-viewContent {
           animation: parallax linear both;
           animation-timeline: view(inline);
@@ -360,6 +362,12 @@
       const link = e.target.closest('a');
       if (!link || !stack.contains(link)) return;
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+
+      // Only intercept same-origin, same-tab links. The demo routes on the
+      // hash alone, so without this check a link to another origin with a
+      // matching hash would be hijacked.
+      if (link.origin !== location.origin) return;
+      if ((link.target && link.target !== '_self') || link.hasAttribute('download')) return;
 
       const urlPath = getUrlPathFromLink(link);
       const parentView = link.closest('.Stack-view');

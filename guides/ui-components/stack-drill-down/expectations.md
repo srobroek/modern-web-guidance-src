@@ -5,12 +5,12 @@
 * The stack uses `overscroll-behavior-x: none` so the swipe-back gesture does not chain into the browser's history-back gesture or the page's vertical scroll.
 * The stack uses `100dvh` (not `vh` or `svh`) for its height so it tracks the dynamic viewport on mobile.
 * Each view applies `scroll-snap-align: start` and `scroll-snap-stop: always` so depth changes happen one step at a time and the stack always settles on exactly one view.
-* The visible horizontal scrollbar is hidden (e.g. via `::-webkit-scrollbar { display: none }`).
+* The visible horizontal scrollbar is hidden in all engines (e.g. via `scrollbar-width: none`, plus `::-webkit-scrollbar { display: none }` for older WebKit/Blink).
 * Each view contains a nested inner element (e.g. `.Stack-viewContent`) that holds the view content; the parallax transform is applied to this inner element and NOT directly to the snap target.
 
 ## Parallax / scroll-driven animation
 
-* The scroll-driven parallax effect is wrapped in `@supports (animation-timeline: view())` so browsers without scroll-driven animations don't end up with the `to`-state transform applied as a static style.
+* The scroll-driven parallax effect is wrapped in `@supports ((animation-timeline: view()) and (animation-range: entry))` so browsers without (or with only partial) scroll-driven animation support don't end up with the `to`-state transform applied as a static style.
 * The parallax animation uses `animation-timeline: view(inline)` and an `animation-range` confined to the exit phase (e.g. `exit 0% exit 100%`), so the active view stays at rest during its own entry.
 * A drop-shadow (or equivalent "card stacking" effect) is applied to drill-down views but NOT to the root view.
 
@@ -43,7 +43,7 @@
 
 * Drill-down triggers are real `<a href>` elements (not `<button>` or `<div>` with click handlers).
 * The click handler preserves modifier-key and middle-click behavior so cmd/ctrl/shift/middle clicks still open links in a new tab/window (i.e. `preventDefault` is NOT called in those cases).
-* Clicks on URLs not handled by the stack section (e.g. external links, paths not recognized by the route resolver) fall through to normal browser navigation.
+* Clicks on URLs not handled by the stack section (e.g. external links, paths not recognized by the route resolver) fall through to normal browser navigation. Cross-origin links are never intercepted, even when their path (or, with hash routing, their fragment) matches a stack route; links with a `target` other than `_self` or a `download` attribute also navigate normally.
 
 ## Back button
 
