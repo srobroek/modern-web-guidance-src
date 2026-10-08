@@ -18,7 +18,7 @@ Out-of-Order (OOO) HTML Streaming (also known as Declarative Partial Updates) is
 The feature consists of two primary mechanisms:
 
 1.  **Declarative Patching (HTML-based)**: Uses new processing instructions (`<?marker>`, `<?start>`, `<?end>`) and `<template for>` to swap content in the DOM as it streams in from the server.
-2.  **Imperative setting and streaming (JS-based)**: A suite of new methods (e.g., `streamHTML()`, `setHTMLUnsafe()`) that allow setting of HTML or piping readable streams directly into DOM elements with native performance and optional script execution.
+2.  **Imperative setting and streaming (JS-based)**: A suite of new methods (e.g., `streamHTML()`, `appendHTML()`, `streamHTMLUnsafe()`) that allow setting of HTML or piping readable streams directly into DOM elements with native performance, plus a `runScripts` option for optional script execution, which is also added to the existing `setHTMLUnsafe()` method.
 
 ## Best Practices
 
@@ -63,8 +63,8 @@ The browser looks for specific processing instructions to identify where content
 Once a `<template>` replaces an insertion point, that insertion point no longer exists, and can not be reused. However, a `<template>` may contain insertion points that can be used later in the stream.
 
 ```html
- <?start name="replaced-content">
-  <div class="skeleton">
+<?start name="replaced-content">
+  <div class="skeleton">Loading…</div>
 <?end>
 <!-- Later in the same stream, provide initial content -->
 <template for="replaced-content">
@@ -99,29 +99,36 @@ The browser provides a suite of 24 methods (6 actions, each with 4 variations) t
 
 *   **Safe vs. Unsafe**: 
     *   **Safe** methods (e.g., `setHTML()`) use a built-in sanitizer by default to strip potentially dangerous content like `<script>` tags. You can pass a custom `Sanitizer` object in the options to apply in addition to the default sanitizer.
-    *   **Unsafe** methods (e.g., `setHTMLUnsafe()`) do not sanitize by default, but you can still pass a custom `Sanitizer`. To allow scripts to execute in the new content, you must explicitly pass `{ runScripts: true }` in the options. **IMPORTANT**: Only use unsafe methods with trusted content where safe methods would not work.
+    *   **Unsafe** methods (e.g., `setHTMLUnsafe()`) do not sanitize by default, but you can still pass a custom `Sanitizer`. Scripts in the new content do not run by default (`runScripts` defaults to `false`). To allow them to execute, you must explicitly pass `{ runScripts: true }` in the options. **IMPORTANT**: Only use unsafe methods with trusted content where safe methods would not work, and only pass `runScripts: true` when the content contains trusted scripts that must run.
 *   **Static vs. Streaming**:
     *   **Static** methods take a string (or `TrustedHTML`) and apply it immediately.
     *   **Streaming** methods return a `WritableStream`. This allows you to pipe content (e.g., from a `fetch` response) directly into the DOM, and the browser will render it incrementally as chunks arrive.
 
 #### Example: Streaming a Fetch Response
 
-You can pipe fetch responses directly into the DOM without manual chunk handling.
+Pipe a fetch response directly into the DOM without manual chunk handling. A response body can be read only once, so choose **one** way to turn it into a text stream:
+
+- `response.textStream()` decodes the body as UTF-8 for you. Use it where supported.
+- `response.body.pipeThrough(new TextDecoderStream())` is the equivalent for browsers without `textStream()`.
 
 ```javascript
 const main = document.querySelector('main');
-const response = await fetch('/api/partial-update');
+const response = await fetch('/partials/main-content.html');
+if (!response.ok) {
+  throw new Error(`Failed to load partial: ${response.status}`);
+}
 
-// Pipe the stream directly into the element
-await response.body
-  .pipeThrough(new TextDecoderStream())
-  .pipeTo(main.streamHTMLUnsafe({ runScripts: true }));
+// Read the body exactly once, with textStream() where available.
+const htmlStream = 'textStream' in response
+  ? response.textStream()
+  : response.body.pipeThrough(new TextDecoderStream());
 
-// Or use the `textStream()` convenience method which streams directly without needing the intermediate `TextDecoderStream()` step
-await response
-  .textStream()
-  .pipeTo(main.streamHTMLUnsafe({ runScripts: true }))
+// Trusted, same-origin partial: stream it without running its scripts.
+// Use main.streamHTML() instead for content that must be sanitized.
+await htmlStream.pipeTo(main.streamHTMLUnsafe());
 ```
+
+Pass `{ runScripts: true }` to `streamHTMLUnsafe()` only when the partial is trusted and contains scripts that must run.
 
 ## Use Case Reference Matrix
 
