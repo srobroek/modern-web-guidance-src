@@ -67,7 +67,7 @@ The following is a basic example of the above implementation steps.
 
 {{ BASELINE_STATUS("container-style-queries") }}
 
-Until there is Baseline support for container style queries it is NOT RECOMMENDED that they be used for core features that must be available across all browsers, since it is not simple to create a fallback for them that does not take away from their benefits or that have their own limitations. For example, if a UI density user preference is not deemed to be a core feature that must be available across all experiences, then container style queries can be use to implement the feature without a fallback.
+Container style queries became Baseline Newly available on 2026-05-19 (Firefox 151), so browser versions still in use lack them. Until they are Baseline Widely available it is NOT RECOMMENDED that they be used for core features that must be available across all browsers, since it is not simple to create a fallback for them that does not take away from their benefits or that have their own limitations. For example, if a UI density user preference is not deemed to be a core feature that must be available across all experiences, then container style queries can be used to implement the feature without a fallback.
 
 ### Using selectors instead
 
@@ -101,7 +101,7 @@ A major limitation of this fallback approach is that it does not support nesting
 
 ### Using style queries as a progressive enhancement
 
-While it’s NOT RECOMMENDED, if you want to use style queries as a progressive enhancement for a core feature, then to avoid duplication you can create some custom properties, then include the style queries after. Make sure the fallback approach uses `:where()` when selecting the container elements to avoid increasing the specificity.
+While it’s NOT RECOMMENDED, if you want to use style queries as a progressive enhancement for a core feature, then to avoid duplication you can create some custom properties, then include the style queries after. Make sure the fallback approach uses `:where()` when selecting the container elements to avoid increasing the specificity. The style queries test the `--density` custom property, so map the `data-density` attribute onto it; the markup stays the same as in the selector example.
 
 ```css
 .card {
@@ -117,7 +117,17 @@ While it’s NOT RECOMMENDED, if you want to use style queries as a progressive 
   padding: var(--card-padding-spacious);
 }
 
-/* Use style queries as a progressive enhancement: same specificity, so order of appearance is used */
+/* Map the markup token onto the custom property that the style queries read */
+:where([data-density="compact"]) {
+  --density: compact;
+}
+
+:where([data-density="spacious"]) {
+  --density: spacious;
+}
+
+/* Use style queries as a progressive enhancement: same specificity, so order of appearance is used.
+   --density inherits, so the nearest data-density ancestor wins, which also fixes nesting. */
 
 @container style(--density: compact) {
   .card {
