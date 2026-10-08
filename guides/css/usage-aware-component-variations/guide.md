@@ -78,6 +78,8 @@ Reach for a style query when **both sides of a contextual relationship may chang
 
 Until container style queries are widely available, layer them on as a progressive enhancement: ship a selector-based default that works everywhere, and let the style query override it when supported. Use `:where()` on the context selector so the style query (same specificity, later in source order) wins automatically.
 
+The selector fallback keeps matching in browsers that support style queries, too. If a nested container resets the flag (e.g., `.featured > .plain { --surface: plain }`), `:where(.featured) .badge` still reveals the badge inside `.plain`. Add a `not style()` block that restores the defaults, so supporting browsers follow the nearest flag instead of the class. Browsers without style queries treat both `@container style()` blocks as not matching and keep the selector fallback.
+
 ```css
 /* Default styles — work everywhere */
 .button {
@@ -110,6 +112,19 @@ Until container style queries are widely available, layer them on as a progressi
 
   .badge {
     display: block;
+  }
+}
+
+/* Undo the selector fallback where a nearer container sets a different flag */
+@container not style(--surface: featured) {
+  .button {
+    background: transparent;
+    color: revert; /* the default .button rule sets no color */
+    border: 1px solid currentColor;
+  }
+
+  .badge {
+    display: none;
   }
 }
 ```
