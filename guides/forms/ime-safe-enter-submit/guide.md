@@ -17,7 +17,7 @@ Note that the composition-active check only matters for multiline `<textarea>` f
 
 ## Implementation strategy
 
-For a `<textarea>` with custom enter-to-submit, check the native `isComposing` property of the `KeyboardEvent` before submitting the content. The default action of `Enter` in a `<textarea>` is to insert a newline, so you must also call `event.preventDefault()` to suppress that.
+For a `<textarea>` with custom enter-to-submit, check the native `isComposing` property of the `KeyboardEvent` first, and return without touching the event while composition is active: that `Enter` belongs to the IME. Only after that check, call `event.preventDefault()` to suppress the newline that `Enter` inserts in a `<textarea>`, and submit. Calling `preventDefault()` on the confirming keydown cancels it, and UI Events says composition events that keydown would have caused SHOULD NOT be dispatched, so the conversion would not be confirmed.
 
 ```html
 <form id="chat-form">
@@ -33,14 +33,13 @@ const form = document.getElementById('chat-form');
 
 textarea.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
-    // Prevent the default newline behavior
-    event.preventDefault();
-
-    // If the user is composing text, return early.
+    // If the user is composing text, let the IME handle the keystroke.
     if (event.isComposing) {
       return;
     }
 
+    // Prevent the default newline behavior, then submit
+    event.preventDefault();
     form.requestSubmit();
   }
 });
@@ -68,13 +67,12 @@ By pairing `event.isComposing` with a check for `event.keyCode === 229`, you can
 ```js
 textarea.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault();
-
-    // Block submission if composing natively or if keyCode is 229
+    // Leave the keystroke to the IME if composing natively or if keyCode is 229
     if (event.isComposing || event.keyCode === 229) {
       return;
     }
 
+    event.preventDefault();
     form.requestSubmit();
   }
 });
@@ -97,13 +95,11 @@ textarea.addEventListener('compositionend', (event) => {
 
 textarea.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault();
-
     if (event.isComposing) {
       return;
     }
 
-    // Block submission if the event occurs within a 50ms window of composition ending.
+    // Leave the keystroke alone if it occurs within a 50ms window of composition ending.
     // Math.abs handles Safari's inverted event delivery timing bug.
     if (
       lastCompositionEndAt !== null &&
@@ -112,6 +108,7 @@ textarea.addEventListener('keydown', (event) => {
       return;
     }
 
+    event.preventDefault();
     form.requestSubmit();
   }
 });
