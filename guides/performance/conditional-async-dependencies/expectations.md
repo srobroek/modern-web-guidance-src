@@ -1,4 +1,5 @@
 - The script checks if `popover` is in `HTMLElement.prototype` to determine if a polyfill is needed.
 - If the feature is missing, a dynamic import is executed using top-level `await`.
 - The conditionally loaded logic is implemented within a single module entry point, preventing simultaneous imports from multiple sibling modules.
+- Code that uses the feature runs only after the polyfill module resolves: it imports that module itself, or it is loaded with a dynamic `import()` after it. It is not a sibling static import of the polyfill module.
 - A functional popover element and a button with a `popovertarget` attribute are present in the document.

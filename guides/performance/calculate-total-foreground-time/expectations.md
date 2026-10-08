@@ -1,3 +1,3 @@
 - The application wants to record the total time the page was visible (total foreground time) across the life of the page.
 - Total foreground time _must_ be measured using the `VisibilityStateEntry` API, which uses `PerformanceObserver`.
-- If a fallback is necessary, the application _must_ first check if `VisibilityStateEntry` API is available. If not, `performance.now()` can be used instead with the caveat that it will include background time in its results.
+- If a fallback is necessary, the application _must_ first check if `VisibilityStateEntry` API is available (for example with `PerformanceObserver.supportedEntryTypes`). If not, it _must not_ report `performance.now()` as foreground time; it accumulates visible time from `visibilitychange` events and reports it under a separate estimate label, or reports the metric as unavailable.

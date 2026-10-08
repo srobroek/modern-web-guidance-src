@@ -4,7 +4,8 @@
 - The page does not visually flicker or flash between the control and variant states on initial load.
 - The variant styling is applied before the browser paints any content to the screen.
 - A fallback anti-flicker mechanism is included for browsers that do not support `blocking="render"`, using feature detection `!Object.hasOwn(HTMLScriptElement.prototype, 'blocking')`.
-- No anti-flicker snippet (opacity: 0 hack) is used when `blocking="render"` is supported by the browser.
+- No anti-flicker snippet (hiding the page) is used when `blocking="render"` is supported by the browser.
+- The fallback hides the page with `visibility: hidden`, not `opacity: 0`, so hidden content cannot receive clicks or keyboard focus.
 - The fallback includes a safety timeout to prevent an indefinitely blank page if the experiment script fails to load.
 - The `blocking="render"` attribute is NOT applied to non-visual scripts (analytics, tracking, etc.).
 - Only scripts in the `<head>` use `blocking="render"`.

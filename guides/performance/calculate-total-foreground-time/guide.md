@@ -19,17 +19,17 @@ MANDATORY: You must query the `visibility-state` performance entries to calculat
 /**
  * Calculates total time the page was in the visible state.
  *
- * @returns {number} Total foreground time in milliseconds.
+ * @returns {number|null} Total foreground time in milliseconds, or null when
+ *   the browser has no visibility-state entries.
  */
 function getTotalForegroundTime() {
   // MANDATORY: Query the visibility-state entries from the performance timeline.
   const entries = performance.getEntriesByType('visibility-state');
 
-  // Fallback: If the browser does not support VisibilityStateEntry,
-  // the API will gracefully return an empty array.
+  // Unsupported browsers return an empty array. Feature-detect up front
+  // (see "Fallbacks & browser support") instead of treating that as data.
   if (entries.length === 0) {
-    // Return total time since navigation start as a fallback.
-    return performance.now();
+    return null;
   }
 
   let totalForegroundTime = 0;
@@ -59,16 +59,36 @@ function getTotalForegroundTime() {
 
 The `VisibilityStateEntry` API is a modern addition to the Performance Timeline and may not be supported in all browsers.
 
-Because `performance.getEntriesByType('visibility-state')` returns an empty array in unsupported browsers, feature detection is built into the calculation flow. You should always check if entries are returned before proceeding.
+Feature-detect it with `PerformanceObserver.supportedEntryTypes`. **DO NOT** fall back to `performance.now()`: it is total time since navigation, including background time, so reporting it as foreground time inflates engagement in unsupported browsers and mixes two different metrics under one name.
 
-If the API is unsupported, the recommended fallback is to return `performance.now()`. This represents the total time since navigation, which serves as a reasonable upper bound for engagement time when visibility state history is unavailable.
+In unsupported browsers, accumulate visible time from `visibilitychange` events instead, and report it under a separate label (for example `foreground_time_estimate`). Load this code as early as possible: it cannot see visibility changes that happened before it ran.
 
 ```javascript
-const entries = performance.getEntriesByType('visibility-state');
+const supportsVisibilityStateEntry =
+  PerformanceObserver.supportedEntryTypes?.includes('visibility-state') ?? false;
 
-// If the array is empty, the API is likely unsupported.
-if (entries.length === 0) {
-  // Fallback: Return total time since page load.
-  return performance.now();
+let estimatedForegroundTime = 0;
+// Assume the page was visible from navigation start if it is visible now;
+// earlier background periods are unknown in this fallback.
+let visibleSince = document.visibilityState === 'visible' ? 0 : null;
+
+if (!supportsVisibilityStateEntry) {
+  document.addEventListener('visibilitychange', () => {
+    const now = performance.now();
+    if (document.visibilityState === 'hidden' && visibleSince !== null) {
+      estimatedForegroundTime += now - visibleSince;
+      visibleSince = null;
+    } else if (document.visibilityState === 'visible') {
+      visibleSince = now;
+    }
+  });
+}
+
+function getForegroundTimeMetric() {
+  if (supportsVisibilityStateEntry) {
+    return { name: 'foreground_time', value: getTotalForegroundTime() };
+  }
+  const openPeriod = visibleSince !== null ? performance.now() - visibleSince : 0;
+  return { name: 'foreground_time_estimate', value: estimatedForegroundTime + openPeriod };
 }
 ```

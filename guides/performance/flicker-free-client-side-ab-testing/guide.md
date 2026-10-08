@@ -138,21 +138,25 @@ DO: Use a lightweight anti-flicker snippet as a fallback only when `blocking="re
 
       // DO: Set a timeout to reveal the page if the experiment
       // script takes too long. This prevents an indefinitely
-      // blank page on slow connections. Adjust the timeout
-      // to match your experiment SDK's expected load time.
+      // blank page on slow connections. Keep it short (2000ms is an
+      // example value): on timeout the user sees the control variant,
+      // which is the safe default, instead of waiting on the SDK.
       setTimeout(() => {
         document.documentElement.classList.remove('ab-loading');
-      }, 4000);
+      }, 2000);
     }
   </script>
 
   <style>
     /*
-      DO: Use opacity to hide content during experiment loading.
+      DO: Use visibility: hidden, not opacity: 0, to hide content during
+      experiment loading. Content with opacity: 0 still receives clicks
+      and keyboard focus, so users can activate controls they cannot see.
+      visibility: hidden content does neither.
       This is only applied when blocking="render" is unsupported.
     */
     .ab-loading {
-      opacity: 0 !important;
+      visibility: hidden !important;
     }
   </style>
 </head>

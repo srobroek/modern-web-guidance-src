@@ -21,6 +21,7 @@ While this approach offers massive performance benefits, it introduces a specifi
 
 *   **CPU Savings:** Massive. The browser completely skips layout and paint passes for hidden views.
 *   **RAM Cost:** High. The browser keeps all DOM nodes, event listeners, and state for the hidden view in memory.
+*   **Script keeps running:** `content-visibility: hidden` only skips rendering. Timers, `requestAnimationFrame` loops, intervals, and network polling started by a hidden view keep running. Pause them when the view becomes inactive and resume them when it is shown again.
 
 #### When This Trade-off Becomes Dangerous
 
@@ -48,7 +49,14 @@ Set `content-visibility: hidden` on views that are not currently active.
 
 ### 2. Manage Focus
 
-When swapping views, ensure you manage keyboard focus correctly to preserve accessibility.
+When swapping views, ensure you manage keyboard focus correctly to preserve accessibility. A plain `<div>` or `<section>` is not focusable, so `focus()` on it does nothing. Give the focus target `tabindex="-1"` (focusable from script, but not added to the tab order), for example the view's main heading:
+
+```html
+<section id="settings" class="spa-view inactive" aria-hidden="true">
+  <h2 tabindex="-1">Settings</h2>
+  <!-- view content -->
+</section>
+```
 
 ```javascript
 function switchToView(viewId) {
@@ -57,14 +65,16 @@ function switchToView(viewId) {
     view.classList.add('inactive');
     view.setAttribute('aria-hidden', 'true');
   });
-  
+
   // Show the target view
   const activeView = document.getElementById(viewId);
   activeView.classList.remove('inactive');
-  activeView.setAttribute('aria-hidden', 'false');
-  
-  // MANDATORY: Move focus to the new view to ensure a logical tab-order
-  activeView.focus();
+  activeView.removeAttribute('aria-hidden');
+
+  // MANDATORY: Move focus into the new view to ensure a logical tab order.
+  // The target needs tabindex="-1" (or must be natively focusable).
+  const focusTarget = activeView.querySelector('[tabindex="-1"]') ?? activeView;
+  focusTarget.focus();
 }
 ```
 

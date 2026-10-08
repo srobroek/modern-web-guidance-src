@@ -9,7 +9,7 @@ web-feature-ids:
 
 Scrolling on the web should be smooth and responsive. Executing heavy tasks—such as layout recalculations, analytics data beacons tracking, or dynamic DOM updates—during scrolling can saturate the main thread, resulting in dropped frames and layout thrashing.
 
-Historically, developers have relied on debouncing the `scroll` event using `setTimeout()` to guess when a scroll is finished. However, these debounced functions are notoriously unreliable. They may trigger while the user’s is still scrolling.
+Historically, developers have relied on debouncing the `scroll` event using `setTimeout()` to guess when a scroll is finished. However, these debounced functions are notoriously unreliable. They may trigger while the user is still scrolling.
 
 The `scrollend` event offers a highly reliable, performance-driven solution. The browser fires a `scrollend` event exactly when a scroll has rested, all transitions are finished, and a touch gesture has been released.
 
@@ -50,8 +50,8 @@ scroller.addEventListener('scrollend', () => {
 
 ## Strategic Implementation & Best Practices
 
-- **DO** use `scrollend` instead of debounced `scroll` events when firing layout data beacons or fetching new content content layout dynamically. 
-- **DO** consider pairing this with `scrollSnapChange` or `scrollSnapChanging` snap interactions if you're building carousels or testimonial galleries slides.
+- **DO** use `scrollend` instead of debounced `scroll` events when firing layout data beacons or fetching new content dynamically.
+- **DO** consider pairing this with the `scrollsnapchange` or `scrollsnapchanging` events if you're building carousels or slide galleries. Event names are lowercase, and `addEventListener()` is case-sensitive: `'scrollSnapChange'` never fires.
 - **DO NOT** bundle layout-dependent dynamic updates inside dynamic visual scroll callbacks.
 - **DO** consider that visual viewport zooming and scrolling triggers the `scrollend` event correctly.
 

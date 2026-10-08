@@ -22,43 +22,50 @@ The `long-animation-frame` entry contains a `scripts` property which is an array
 ### Example of identifying the longest running scripts that contribute to long animation frames
 
 ```javascript
-// Accumulate all script entries across the page lifecycle so no
-// data is lost between observer callbacks.
-const allScripts = [];
+// Keep one running total per script source instead of every script entry.
+// Memory stays bounded by the number of distinct sources, and each callback
+// only processes its new entries instead of regrouping the whole history.
+const totalsBySource = new Map();
 
 const observer = new PerformanceObserver(list => {
-  // Collect all script entries across frames to find the biggest offenders.
-  allScripts.push(...list.getEntries().flatMap(entry => entry.scripts));
-
-  // Group by sourceURL so you can identify which scripts contribute
-  // the most total time, even if each individual invocation is short.
-  const scriptSource = [...new Set(allScripts.map(script => script.sourceURL))];
-  const scriptsBySource = scriptSource.map(sourceURL => ([sourceURL,
-      allScripts.filter(script => script.sourceURL === sourceURL)
-  ]));
-  const processedScripts = scriptsBySource.map(([sourceURL, scripts]) => ({
-    sourceURL,
-    count: scripts.length,
-    totalDuration: scripts.reduce((subtotal, script) => subtotal + script.duration, 0)
-  }));
-
-  // Only include scripts above a certain threshold to reduce noise.
-  const heavyScripts = processedScripts.filter(script => {
-    return script.totalDuration > 100;
-  });
-
-  // Sort by total duration so the worst offenders appear first,
-  // making it easier to prioritize optimization efforts.
-  heavyScripts.sort((a, b) => b.totalDuration - a.totalDuration);
-
-  // Log to the console for local debugging. In production, replace
-  // this with a call to send the data to your analytics service.
-  console.table(heavyScripts);
+  for (const entry of list.getEntries()) {
+    for (const script of entry.scripts) {
+      // Group by sourceURL so you can identify which scripts contribute
+      // the most total time, even if each individual invocation is short.
+      const totals = totalsBySource.get(script.sourceURL) ?? { count: 0, totalDuration: 0 };
+      totals.count += 1;
+      totals.totalDuration += script.duration;
+      totalsBySource.set(script.sourceURL, totals);
+    }
+  }
 });
 
 // Use buffered: true to capture any long frames that occurred before
 // this observer was registered.
 observer.observe({type: 'long-animation-frame', buffered: true});
+
+function getHeavyScripts() {
+  return [...totalsBySource]
+    .map(([sourceURL, totals]) => ({ sourceURL, ...totals }))
+    // Only include scripts above a certain threshold (100ms is an example
+    // value) to reduce noise.
+    .filter(script => script.totalDuration > 100)
+    // Sort by total duration so the worst offenders appear first,
+    // making it easier to prioritize optimization efforts.
+    .sort((a, b) => b.totalDuration - a.totalDuration);
+}
+
+// Report when the page is hidden instead of on every callback. The totals
+// are cumulative, so each report replaces the previous one: send them with
+// fetchLater() and abort the pending request when you send a newer one, or
+// keep only the latest report per page view on the server.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    // Log to the console for local debugging. In production, send the
+    // data to your analytics service (for example with fetchLater()).
+    console.table(getHeavyScripts());
+  }
+});
 ```
 
 ## Best Practices

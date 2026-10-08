@@ -36,8 +36,8 @@ export const polyfillLoaded = true;
 ```javascript
 // main.js
 
-// MANDATORY: Because conditionally-load-polyfill.js uses top-level await, 
-// this import will block execution of main.js until the polyfill is ready.
+// MANDATORY: Because conditionally-load-polyfill.js uses top-level await,
+// the body of main.js does not run until the polyfill is ready.
 import './conditionally-load-polyfill.js';
 
 // Now it is safe to use the feature (e.g., showing a popover)
@@ -47,32 +47,33 @@ if (myPopover) {
 }
 ```
 
-### Avoiding the Safari top-level `await` bug
+### Start the application after the polyfill module
 
-**MANDATORY:** You must structure your imports carefully to avoid a bug where top-level await doesn't behave as expected in Webkit, which occurs when multiple modules *simultaneously* import a module that contains a top-level `await`:
+**MANDATORY:** Top-level `await` only delays modules that import the awaiting module, directly or through their own imports. It does **not** delay sibling imports. In `import './conditionally-load-polyfill.js'; import './app.js';`, `app.js` does not import the polyfill module, so it can run *before* the polyfill has loaded.
+
+Use one entry module that statically imports the polyfill module and then loads the rest of the application with a dynamic `import()`:
 
 ```javascript
-// DO NOT do this: importing the top-level await module from multiple sibling modules
-// simultaneously will crash in Safari.
-// 
-// a.js: import './conditionally-load-polyfill.js';
-// b.js: import './conditionally-load-polyfill.js';
-// main.js: import './a.js'; import './b.js'; // CRASH!
+// DO NOT rely on import order between siblings:
+// main.js: import './conditionally-load-polyfill.js'; import './app.js';
+// app.js may execute before the awaited polyfill import resolves.
 
-// INSTEAD, guarantee a single entry point:
-// Import the top-level await module ONCE at the very top of your application tree.
+// INSTEAD (entry.js): the only module that imports the awaiting module.
 import './conditionally-load-polyfill.js';
 
-// Then import the rest of your application code, ensuring the await resolves first.
-import './app.js';
+// Start the app only after the polyfill is ready. Modules loaded from here
+// can use the feature without importing the polyfill module themselves.
+await import('./app.js');
 ```
+
+Importing the polyfill module from every consumer also orders execution correctly, but many modules importing it at once triggers the Safari bug described below.
 
 ### Fallback strategies
 
 {{ BASELINE_STATUS("top-level-await") }}
 
-Top-level `await` has been supported in all major browsers since 2021 (Chrome 89, Firefox 89, Safari 15). Because of this broad support, **you do not need to implement a fallback strategy for modern web applications.**
+Top-level `await` is supported in Chrome 89 and Firefox 89. Safari 15 to 26 also run it, but have a WebKit bug (bug 242740) when multiple modules *simultaneously* import a module that contains a top-level `await`. Safari 27 fixes it, which is why the feature only became Baseline Newly available in 2026.
 
-As long as you follow the guidance in the previous section to **avoid the Safari execution order bug**, you can safely rely on top-level `await` directly to manage your async dependencies.
+If you support Safari 15 to 26, use the single entry module pattern above: exactly one module statically imports the module that contains the top-level `await`.
 
-You only need to avoid top-level `await` and fall back to standard asynchronous functions or dynamic `import()` orchestration if your application is explicitly required to support legacy browsers released before 2021.
+If you must support browsers without top-level `await` at all, replace it with an `async` function that loads the polyfill and then calls `import('./app.js')`.

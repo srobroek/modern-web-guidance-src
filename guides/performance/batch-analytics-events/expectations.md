@@ -3,5 +3,5 @@
 - `fetchLater()` should be invoked with the `activeAfter` option set.
 - Multiple invocations of `fetchLater()` within the `activateAfter` time window should be batched into a single request (e.g. prior calls should be aborted).
 - Batching should be limited in some way to prevent starvation or quota overflow.
-- If a `fetchLater()` call throws a `QuotaExceededError`, `RangeError`, or `TypeError`, it should be properly handled.
+- If a `fetchLater()` call throws a `QuotaExceededError`, `RangeError`, or `TypeError`, it should be properly handled. The previously scheduled request should only be aborted after its replacement was scheduled successfully, so a failed call does not drop the queued events.
 - The `fetchLater()` polyfill should be included in the bundle, unless the project is only supporting Chromium browsers.

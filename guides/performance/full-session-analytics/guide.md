@@ -8,11 +8,11 @@ web-feature-ids:
 
 # Reliably measure full-session analytics and telemetry
 
-To reliably analytics and telemetry data that covers the entirety of a user's visit to a web page (not just until page load) use the `fetchLater()` API.
+To reliably send analytics and telemetry data that covers the entirety of a user's visit to a web page (not just until page load), use the `fetchLater()` API.
 
-The `fetchLater()` API is the most reliably way to send data to a server in cases where a response is not required and delivery timing is not urgent, which applies to data such as user analytics, telemetry, error tracking, and performance metrics like Core Web Vitals.
+The `fetchLater()` API is the most reliable way to send data to a server in cases where a response is not required and delivery timing is not urgent, which applies to data such as user analytics, telemetry, error tracking, and performance metrics like Core Web Vitals.
 
-Older technique like creating an `<img>` pixel in an `unload` event listener are notoriously unreliably (especially on mobile) and can negatively impact performance (by making pages ineligible for bfcache).
+Older techniques like creating an `<img>` pixel in an `unload` event listener are notoriously unreliable (especially on mobile) and can negatively impact performance (by making pages ineligible for bfcache).
 
 ## How to implement
 
@@ -24,7 +24,7 @@ Older technique like creating an `<img>` pixel in an `unload` event listener are
 
 ## Example code
 
-This code measures the session duration of a user's visit to a page using `fetchLater()` to queue a new beacon every 10 seconds with the updated session duration.
+This code measures the session duration of a user's visit to a page using `fetchLater()`. It queues a beacon immediately, so visits shorter than 10 seconds are still reported, and then replaces it every 10 seconds with the updated session duration.
 
 ```javascript
 const ANALYTICS_ENDPOINT = '/path/to/analytics/endpoint';
@@ -37,6 +37,14 @@ const sessionData = {
 let fetchLaterController = null;
 
 function queueBeacon() {
+  // With the polyfill below, a fetchLater() call made while the page is
+  // hidden sends immediately. Skip hidden ticks so a backgrounded tab does not
+  // send one beacon every 10 seconds; the beacon from the last visible tick
+  // is still pending (native) or was sent when the page was hidden (polyfill).
+  if (document.visibilityState === 'hidden') {
+    return;
+  }
+
   // Abort any pending beacons before creating a new one.
   if (fetchLaterController) {
     fetchLaterController.abort();
@@ -60,7 +68,8 @@ function queueBeacon() {
   }
 }
 
-// Update the session data and queue a new beacon every 10 seconds.
+// Queue the first beacon right away, then refresh it every 10 seconds.
+queueBeacon();
 setInterval(queueBeacon, 10000);
 ```
 
@@ -68,7 +77,9 @@ setInterval(queueBeacon, 10000);
 
 - **DO** use `fetchLater()` to send data to a server in any situation where a response is not necessary, and it's not critical that the data is sent immediately.
 - **DO** use an `AbortController` to cancel the pending fetch in cases where the data may need to be updated before the user leaves the page
-- **DO** minimum the payload size to avoid exceeding the quota (currently roughly 64KB per origin).
+- **DO** minimize the payload size to avoid exceeding the quota (currently roughly 64KB per origin).
+- **DO** include a session ID in the payload and keep only the latest beacon per ID on the server. More than one beacon per session can arrive, for example with the polyfill, which sends each time the page is hidden and queues a new beacon when the user returns.
+- **DO NOT** treat `activated === true` as proof of delivery. It only means the request was started; the server may still never receive it.
 - **DO** wrap calls to `fetchLater()` in a `try/catch` to handle quota errors.
 - **DO** feature detect the presence of `fetchLater()` on `globalThis` and implement a fallback strategy for browsers that don't support the API.
 - **DO NOT** use a `ReadableStream` object for the request body, as that will error.

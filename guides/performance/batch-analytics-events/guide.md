@@ -16,11 +16,11 @@ The optimal way to provide real-time analytics updates, while still minimizing b
 
 1. **Schedule the request:** As soon as any relevant analytics data is available, call `fetchLater()` with your data payload and pass an `activateAfter` value. This queues the data to be sent after that amount of time passes, or if the user leaves the page beforehand.
 
-2. **Batch multiple events together:** If a new analytics event occurs before the `activateAfter` timeout expires, abort the previously scheduled request and call `fetchLater()` again (with the same `activateAfter` value) with the full event queue in a single payload.
+2. **Batch multiple events together:** If a new analytics event occurs before the `activateAfter` timeout expires, call `fetchLater()` again (with the same `activateAfter` value) with the full event queue in a single payload, then abort the previously scheduled request. Schedule the replacement first: if it throws (for example on a quota error), the previous request is still pending and the events it carries are not lost.
 
 3. **Reset the event queue when the timeout expires:** If a new analytics event occurs after the scheduled beacon has successfully sent (i.e. the `fetchLater()` result's `activated` value is `true`), reset the event queue.
 
-3. **Let the browser handle the rest:** If the user navigates away or closes the tab before the `activateAfter` timeout expires, the browser will still reliably send the payload from your most recent `fetchLater()` call.
+4. **Let the browser handle the rest:** If the user navigates away or closes the tab before the `activateAfter` timeout expires, the browser will still reliably send the payload from your most recent `fetchLater()` call.
 
 ## Example code
 
@@ -35,7 +35,9 @@ const ANALYTICS_ENDPOINT = '/path/to/analytics/endpoint';
 const BATCH_WINDOW = 10 * 1000;
 
 // The maximum number of events to batch. Pick a number that is unlikely
-// to overflow the fetchLater() quota for the page.
+// to overflow the fetchLater() quota for the page. While a replacement is
+// scheduled, the previous request still counts against the quota, so two
+// payloads of this size must fit.
 const MAX_QUEUE_SIZE = 100;
 
 const eventQueue = [];
@@ -45,7 +47,7 @@ let fetchLaterController;
 function trackEvent(eventData) {
   // If the previously queued beacon has already been sent, or if the
   // max queue size has been met, reset the queue.
-  if (fetchLaterResult?.activated || eventQueue.length > MAX_QUEUE_SIZE) {
+  if (fetchLaterResult?.activated || eventQueue.length >= MAX_QUEUE_SIZE) {
     fetchLaterController = null;
     fetchLaterResult = null;
     eventQueue.length = 0;
@@ -53,25 +55,27 @@ function trackEvent(eventData) {
 
   eventQueue.push(eventData);
 
-  // Abort any pending beacons before creating a new one.
-  if (fetchLaterController) {
-    fetchLaterController.abort();
-  }
-  fetchLaterController = new AbortController();
-
   // Schedule a fetch for the events to be sent when the batch window expires.
   // IMPORTANT: wrap the call in a try/catch to handle quota errors.
+  const controller = new AbortController();
   try {
     fetchLaterResult = fetchLater(ANALYTICS_ENDPOINT, {
       method: 'POST',
       headers: {'content-type': 'application/json'},
       body: JSON.stringify(eventQueue),
-      signal: fetchLaterController.signal,
+      signal: controller.signal,
       activateAfter: BATCH_WINDOW,
     });
   } catch (error) {
-    // Handle errors as needed.
+    // Scheduling failed (for example, a QuotaExceededError). Keep the previous
+    // beacon pending instead of aborting it; the new event stays in the queue
+    // and is retried with the next tracked event.
+    return;
   }
+
+  // Only abort the previous beacon once its replacement is scheduled.
+  fetchLaterController?.abort();
+  fetchLaterController = controller;
 }
 
 // Track page loads.
