@@ -24,15 +24,11 @@ The **Translator API** allows developers to perform client-side text translation
 - **Edge:** Version 148+ (Desktop only).
 - **Not Supported:** Mobile (Android/iOS), Firefox, Safari.
 
-### Hardware Requirements
+### Platform Requirements
 
-To run Gemini Nano and associated models, the system needs:
-
-- **Operating System:** Windows 10/11, macOS 13+, Linux, or ChromeOS (Chromebook
-  Plus).
-- **Storage:** At least **22 GB** free on the profile volume.
-- **Memory/CPU:** 16 GB+ RAM and 4+ CPU cores.
-- **GPU:** 4 GB+ VRAM (Mandatory for Prompt API with audio).
+- **Desktop only:** The Translator API works in Chrome on desktop. It does not work on mobile devices.
+- **Expert model, not Gemini Nano:** Translation runs on an expert translation model with per-language-pair packs. The Gemini Nano foundation-model hardware limits (22 GB free storage, GPU VRAM, or 16 GB RAM) do **not** apply.
+- **DO NOT** gate or warn on hardware specs. Use `Translator.availability(options)` for the language pair as the source of truth.
 - **Network:** Required only for the initial download of language packs/models.
 
 ## Implementation & Code Samples
@@ -118,7 +114,7 @@ for await (const chunk of stream) {
 
 ## Supported Languages
 
-The API supports a wide range of BCP 47 language codes: Here are the languages supported by Chrome's implementation of the Translator API:
+The API accepts BCP 47 language codes. The list below is a snapshot of the languages in Chrome's implementation and will change over time. **DO NOT** hardcode it as an allow-list: call `Translator.availability()` for each language pair, and treat `'unavailable'` as unsupported.
 
 - **ar**: Arabic
 - **bg**: Bulgarian

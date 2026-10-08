@@ -3,3 +3,4 @@
 1. The same options should be passed to both `Summarizer.availability()` and `Summarizer.create()`.
 1. The `Summarizer` instance's `summarize()` or `summarizeStreaming()` method should be used to generate a summary.
 1. A monitor for download progress should be implemented using the `downloadprogress` event.
+1. `summarizer.destroy()` should be called when the summarizer is no longer needed.

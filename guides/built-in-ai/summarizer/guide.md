@@ -18,10 +18,12 @@ The Summarizer API is available starting in **Chrome and Edge 138**. It requires
 
 ### Hardware & Software Requirements
 
-- **OS**: Windows 10/11, macOS 13+, Linux, or ChromeOS (Chromebook Plus).
+- **OS**: Windows 10/11, macOS 13+, Linux, or ChromeOS (Chromebook Plus). Not available on mobile.
 - **Storage**: 22GB free space for the profile volume.
-- **RAM/CPU**: 16GB+ RAM and 4+ CPU cores.
-- **VRAM**: 4GB+ (if using GPU).
+- **GPU or CPU**: The model runs on either one. Meeting one path is enough:
+  - **GPU**: strictly more than 4GB of VRAM.
+  - **CPU**: 16GB+ RAM and 4+ CPU cores.
+- Do not gate on these specs yourself. Use `Summarizer.availability()` as the source of truth.
 
 ### Model Download and Availability
 
@@ -124,6 +126,14 @@ const stream = summarizer.summarizeStreaming(longText);
 for await (const chunk of stream) {
   console.log(chunk);
 }
+```
+
+### 3. Cleanup
+
+Call `destroy()` when you no longer need a summarizer, to free the model's memory. Create a new one if the feature is used again.
+
+```javascript
+summarizer.destroy();
 ```
 
 ## Security and Permissions

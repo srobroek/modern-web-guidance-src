@@ -1,3 +1,5 @@
 1. The `LanguageDetector` API should be available in the browser on `window.LanguageDetector`, but not on `window.ai.languageDetector`.
 1. The `LanguageDetector.availability()` function should return `available` or `downloadable` or `downloading` or `unavailable`.
 1. The `LanguageDetector.detect()` function should return an array of `LanguageDetectionResult` objects, each containing the detected language and confidence score.
+1. When `LanguageDetector.availability()` returns `downloadable` or `downloading`, `LanguageDetector.create()` should be called from a user gesture handler, and the created detector should be reachable from the code that calls `detect()`.
+1. The code must not gate the Language Detector on Gemini Nano hardware requirements (storage, RAM, or VRAM); `availability()` decides.

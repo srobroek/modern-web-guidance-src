@@ -4,3 +4,4 @@
 1. The same `sourceLanguage` and `targetLanguage` options should be passed to both `Translator.availability()` and `Translator.create()`.
 1. The `Translator` instance's `translate()` or `translateStreaming()` method should be used to generate a translation.
 1. A monitor for download progress should be implemented using the `downloadprogress` event.
+1. Language support should be determined by calling `Translator.availability()` for the language pair, not by a hardcoded list of supported languages or by hardware checks.

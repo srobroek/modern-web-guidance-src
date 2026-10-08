@@ -15,27 +15,38 @@ The Prompt API is currently available in Chrome as of version 148 (Desktop) for 
 
 ### Hardware Prerequisites
 
-- **Storage**: 22 GB free space (for the initial profile and model).
-- **Memory/CPU**: 16 GB RAM and 4+ CPU cores.
-- **GPU**: 4 GB VRAM or more (Required for audio input).
+- **Storage**: 22 GB free space on the volume that contains the Chrome profile.
+- **GPU or CPU**: The model runs on either one. Meeting one path is enough:
+  - **GPU**: strictly more than 4 GB of VRAM. Audio input requires the GPU path.
+  - **CPU**: 16 GB RAM or more and 4+ CPU cores.
 - **Network**: Required only for the initial model download.
+- Do not gate on these specs yourself. Use `LanguageModel.availability()` as the source of truth.
 
 ### Initializing the API
 
-Check model availability before triggering a download:
+Check model availability before triggering a download. When the model still has to be downloaded (`'downloadable'` or `'downloading'`), `create()` requires a user gesture (such as a button click); otherwise it rejects with `NotAllowedError`.
 
 ```javascript
+const createOptions = {
+	monitor(m) {
+		// Inform the user while the model downloads so the UI doesn't appear frozen.
+		m.addEventListener('downloadprogress', (e) => {
+			console.log(`Downloaded ${e.loaded * 100}%`);
+		});
+	},
+};
+
+let session;
 const availability = await LanguageModel.availability();
 
 // Do not call create() when unavailable — the model cannot run on this device.
-if (availability !== 'unavailable') {
-	const session = await LanguageModel.create({
-		monitor(m) {
-			// Inform the user while the model downloads so the UI doesn't appear frozen.
-			m.addEventListener('downloadprogress', (e) => {
-				console.log(`Downloaded ${e.loaded * 100}%`);
-			});
-		},
+if (availability === 'available') {
+	// The model is already on the device: no user gesture is needed.
+	session = await LanguageModel.create(createOptions);
+} else if (availability !== 'unavailable') {
+	// The download needs user activation, so create the session from a click.
+	startButton.addEventListener('click', async () => {
+		session ??= await LanguageModel.create(createOptions);
 	});
 }
 ```
@@ -185,6 +196,7 @@ For the full detailed list of dos and don'ts, see https://developer.chrome.com/d
 *Applies to: all APIs, for example, Summarizer, Translator, and Writer.*
 
 **Do:** Initialize the session as soon as you've clearly established the user's intention to use the AI feature, for example, when a user navigates into a relevant AI tools surface, hovers over an AI workspace, or interacts with the feature's surrounding UI. Pre-warming the session allows the model to load into memory quietly in the background while the user is setting up their task, eliminating avoidable cold-start latency.
+Pre-warm this way only when `availability()` returns `'available'`. Hovering and navigation are not user activation, so while the model is still `'downloadable'` or `'downloading'`, a `create()` call from them rejects with `NotAllowedError`. Start the download from a click or key press instead.
 Try to be one step ahead by starting the next most likely AI task as soon as you start rendering the current result, for example, if the feature is designed for iterative use.
 
 **Don't:** Unless necessary, don't wait for the user to click "Generate" to initialize the session. This leads to a cold start delay, because the model must first load into memory and prepare its execution pipeline.
@@ -344,7 +356,10 @@ liked without a way to go back, revert, or compare versions.
 
 **Do:** Implement a local result cache (for example, using `sessionStorage` or
 `IndexedDB`) for repeated inputs or queries. Normalize the input by trimming
-whitespace and lowercasing to increase cache hits. For heavy inputs, for
+whitespace to increase cache hits. Lowercase it only when case cannot change
+the result for your task: `'US'` and `'us'` lowercase to the same key, yet can
+mean different things. Include everything that shapes the output in the key,
+such as the system prompt, session options, and `responseConstraint`. For heavy inputs, for
 example, images, generate a hash to use as a cache key. Set a conservative
 time to live (TTL) for your cache (or serve cached results while updating them
 in the background). Let the user trigger a fresh inference if the result is
@@ -369,5 +384,5 @@ if ('LanguageModel' in self) {
 
 If the Prompt API is unsupported or availability checks return 'unavailable', you must gracefully fall back:
 
-* Remote API Fallback: Redirect the detection request to a server endpoint or a cloud API (such as the Vertex AI Gemini API).
-* Local API Fallback: Redirect the detection request to a local endpoint, for example, using Transformers.js. 
+* Remote API Fallback: Redirect the prompt request to a server endpoint or a cloud API (such as the Vertex AI Gemini API).
+* Local API Fallback: Redirect the prompt request to a local endpoint, for example, using Transformers.js.

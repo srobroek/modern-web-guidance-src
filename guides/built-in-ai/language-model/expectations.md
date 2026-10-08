@@ -4,6 +4,7 @@
 1. The deprecated `capabilities()` method must not be used.
 1. If `LanguageModel.availability()` returns `"unavailable"`, the code must not attempt to call `LanguageModel.create()`.
 1. `LanguageModel.create()` should register a `downloadprogress` listener via the `monitor` option to handle the case where the model needs to be downloaded.
+1. When `LanguageModel.availability()` returns `"downloadable"` or `"downloading"`, `LanguageModel.create()` should be called from a user gesture handler (such as a click), not on page load or hover.
 1. `session.promptStreaming()` should be used when a streaming, incremental response is needed.
 1. `session.prompt()` should be used for one-shot responses.
 1. Output from `session.prompt()` or `session.promptStreaming()` must never be set via `innerHTML`. Instead, use an HTML sanitizer like the native Sanitizer API or the DOMPurify library, or `textContent` or equivalent safe DOM APIs to prevent XSS from untrusted model output.

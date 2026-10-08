@@ -17,12 +17,11 @@ The **Language Detector API** is a client-side web API designed to identify the 
 - **Accessibility:** Labeling content with the correct `lang` attribute for screen readers.
 - **UI Localization:** Adjusting application interfaces based on the user's input language.
 
-## Hardware & System Requirements
+## Platform Requirements
 
-- **OS:** Windows 10/11, macOS 13+, Linux, or Chromebook Plus.
-- **Storage:** 22 GB free space (model is removed if space drops below 10 GB).
-- **RAM/CPU:** 16 GB RAM and 4+ CPU cores.
-- **VRAM:** 4 GB+ if using a GPU.
+- **Desktop only:** The Language Detector API works in Chrome on desktop. It does not work on mobile devices.
+- **Small expert model:** Chrome runs language detection on a small expert model fine-tuned for this task, not on the Gemini Nano foundation model. The foundation-model hardware limits (22 GB free storage, GPU VRAM, or 16 GB RAM) do **not** apply. The model may already be present because other Chrome features use it.
+- **DO NOT** gate or warn on hardware specs. Use `LanguageDetector.availability()` as the source of truth.
 
 ## Implementation Guide
 
@@ -33,12 +32,18 @@ Check model availability before attempting to instantiate the detector or trigge
 **MANDATORY:** Instantiating the language detector or triggering a model download with `LanguageDetector.create()` **MUST** be initiated by a user gesture (such as a button click) to prevent a `NotAllowedError` when the model is in a `downloadable` or `downloading` state.
 
 ```javascript
+let detector;
+
 // Check if the model is available or downloadable
 const availability = await LanguageDetector.availability();
 
-if (availability !== 'unavailable') {
+if (availability === 'available') {
+  // The model is already on the device: no user gesture is needed.
+  detector = await LanguageDetector.create();
+} else if (availability !== 'unavailable') {
   button.addEventListener('click', async () => {
-    const detector = await LanguageDetector.create({
+    // Assign to the outer variable so the detection code below can use it.
+    detector ??= await LanguageDetector.create({
       monitor(m) {
         m.addEventListener('downloadprogress', (e) => {
           console.log(`Downloaded ${e.loaded * 100}%`);
@@ -54,6 +59,7 @@ if (availability !== 'unavailable') {
 The API returns a ranked list of potential languages with a confidence score between `0.0` and `1.0`.
 
 ```javascript
+// Run detection only after `detector` has been created (see step 1).
 const someUserText = 'Hallo und herzlich willkommen!';
 const results = await detector.detect(someUserText);
 
