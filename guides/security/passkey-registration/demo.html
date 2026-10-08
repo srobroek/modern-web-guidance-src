@@ -57,23 +57,27 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(encodedResponse)
             });
-            
-            if (verifyResponse.ok) {
-              statusEl.textContent = 'Passkey Registered Successfully!';
-              statusEl.style.color = '#228b22';
-            } else {
-              throw new Error('Server failed to verify passkey attestation');
-            }
-          } catch (verifyErr) {
-            // Segregated Try/Catch to sync manager credentials list if server verification fails
-            console.error('Verification endpoint failed:', verifyErr);
+          } catch (networkErr) {
+            // The server may have stored the credential before the connection failed: do not signal
+            console.error('Verification endpoint unreachable:', networkErr);
+            throw new Error('Could not confirm the new passkey');
+          }
+
+          if (verifyResponse.ok) {
+            statusEl.textContent = 'Passkey Registered Successfully!';
+            statusEl.style.color = '#228b22';
+          } else if (verifyResponse.status === 400) {
+            // Only a 400 proves the server rejected the attestation and stored nothing
             if (PublicKeyCredential.signalUnknownCredential) {
               await PublicKeyCredential.signalUnknownCredential({
                 rpId,
                 credentialId: encodedResponse.id
               });
             }
-            throw verifyErr;
+            throw new Error('Server failed to verify passkey attestation');
+          } else {
+            // 5xx and other failures: the credential may be stored, so keep it
+            throw new Error('Could not confirm the new passkey');
           }
         } else {
           throw new Error('Failed to create local passkey credential');

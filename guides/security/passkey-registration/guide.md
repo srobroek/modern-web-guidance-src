@@ -89,6 +89,7 @@ const options = {
     - Ensure that the User Present (UP) flag returned in the parsed authenticator data is `true` to confirm physical user presence at the time of creation.
 3.  **Relaxing Verification for 'preferred'**:
     - When the creation options specified `userVerification: "preferred"`, the server-side verification call MUST be configured with `requireUserVerification: false`. Otherwise, authenticators that register without user verification (e.g., screen locks disabled) will trigger spurious server verification failures.
+4.  **Answer with a definitive status**: Return HTTP `400` only when the server rejected the attestation (for example, the challenge or signature did not verify) and stored nothing. Use other statuses for every other failure, because the client treats `400` as proof that the new passkey is orphaned.
 
 ## Client-Side Logic
 
@@ -102,11 +103,16 @@ const options = {
     - `AbortError`: The operation has been aborted.
     - `SecurityError`: Secure origins (HTTPS) or RP ID mismatch errors (configuration issues).
 4.  **Try/Catch Segregation for Signal API**:
-    - Wrap server verification `fetch()` call in a try/catch block. Call `signalUnknownCredential()` when the server verification fetch fails (any status `response.ok === false` or network throws).
+    - Wrap server verification `fetch()` call in a try/catch block. Call `signalUnknownCredential()` ONLY when the server answers HTTP `400`, which proves it rejected the attestation and stored nothing, and ONLY after checking that `PublicKeyCredential.signalUnknownCredential` exists.
+    - Do NOT signal on a network error, timeout, or `5xx` response. The server may have stored the credential before the response was lost, and signaling would remove a passkey the server accepts.
 
 ```javascript
 // optionsFetch and registerVerifyFetch are app-defined HTTP methods
+// registerVerifyFetch resolves to the fetch() Response
 import { optionsFetch, registerVerifyFetch } from "./api.js";
+
+// The same RP ID constant the server uses in rp.id
+const rpId = "example.com";
 
 async function registerPasskey(isPromotion = false) {
   // Verify passkey capability and conditional UI are available
@@ -144,23 +150,41 @@ async function registerPasskey(isPromotion = false) {
   }
 
   // Server Verification phase (Segregated Try/Catch)
-  let encodedResponse = credential.toJSON();
+  const encodedResponse = credential.toJSON();
+  let response;
   try {
-    const response = await registerVerifyFetch(encodedResponse);
-    if (!response.ok) {
-      // Server verification failed to verify/authenticate the credential (orphaned)
-      await PublicKeyCredential.signalUnknownCredential({
-        rpId, // RP ID must match the one defined on the server
-        credentialId: encodedResponse.id, // Base64URL-encoded credential ID
-      });
-    }
+    response = await registerVerifyFetch(encodedResponse);
   } catch (serverErr) {
+    // The server may have stored the credential before the connection failed: do not signal
     console.error("Server verification network failure:", serverErr);
-    await publickeycredential.signalunknowncredential({
-      rpId, // RP ID must match the one defined on the server
-      credentialid: encodedresponse.id, // base64url-encoded credential id
-    });
+    alert("Could not confirm the new passkey. Check your passkeys in account settings.");
+    return;
   }
+
+  if (response.ok) {
+    console.log("Passkey registered.");
+    return;
+  }
+
+  if (response.status === 400) {
+    // The server rejected the attestation and stored nothing: the new passkey is orphaned
+    alert("The passkey could not be registered. Try again.");
+    if (PublicKeyCredential.signalUnknownCredential) {
+      try {
+        await PublicKeyCredential.signalUnknownCredential({
+          rpId, // RP ID must match the one defined on the server
+          credentialId: encodedResponse.id, // Base64URL-encoded credential ID
+        });
+      } catch (signalErr) {
+        console.warn("signalUnknownCredential failed:", signalErr);
+      }
+    }
+    return;
+  }
+
+  // 5xx and other failures: the credential may be stored, so keep it
+  console.error("Passkey verification failed with HTTP", response.status);
+  alert("Could not confirm the new passkey. Check your passkeys in account settings.");
 }
 ```
 
@@ -172,14 +196,21 @@ async function registerPasskey(isPromotion = false) {
 
 The WebAuthn Signal API (`webauthn-signals`) is a progressive optimization used to keep password managers in sync with the server credential state.
 
-- **Fallback Experience**: If `PublicKeyCredential.signalUnknownCredential` is unsupported by the browser, the call MUST be bypassed safely via feature detection gating (`if (PublicKeyCredential.signalUnknownCredential)`), and the server-side verification simply logs the failure without triggering manager updates.
+- **Fallback Experience**: If `PublicKeyCredential.signalUnknownCredential` is unsupported by the browser, the call MUST be bypassed safely via feature detection gating (`if (PublicKeyCredential.signalUnknownCredential)`), and the server-side verification simply logs the failure without triggering manager updates. `webauthn-polyfills` does not add the Signal API methods.
+
+### Passkey feature detection fallback
+
+{{ BASELINE_STATUS("webauthn", "api.PublicKeyCredential.getClientCapabilities_static") }}
+
+Import `webauthn-polyfills` once, before any WebAuthn call. The polyfill only installs `PublicKeyCredential.getClientCapabilities()` in browsers that lack it, and corrects the result on Safari 17.4–18.3, which reports `conditionalMediation` instead of `conditionalGet`. Browsers covered by the Baseline status above keep their native implementation. After the import, you can call `getClientCapabilities()` wherever `PublicKeyCredential` exists.
+
+In browsers with no native `getClientCapabilities()`, the polyfilled method cannot detect a platform authenticator and leaves `passkeyPlatformAuthenticator` undefined, so the capability gate in the code example hides the "Create passkey" button there.
 
 ### Easy JSON Serialization Fallback
 
 {{ BASELINE_STATUS("webauthn", "api.PublicKeyCredential.parseCreationOptionsFromJSON_static") }}
 
-Always install 'webauthn-polyfills' and import it in the context.
-Consider as long as  `PublicKeyCredential` is supported, `PublicKeyCredential.parseCreationOptionsFromJSON` and `PublicKeyCredential.prototype.toJSON` are also supported. 
+Import `webauthn-polyfills` once, before any WebAuthn call. The polyfill only installs `PublicKeyCredential.parseCreationOptionsFromJSON()` and `PublicKeyCredential.prototype.toJSON()` in browsers that lack them; browsers covered by the Baseline status above keep their native implementations. After the import, you can call both methods wherever `PublicKeyCredential` exists.
 
 ```js 
 import 'webauthn-polyfills';

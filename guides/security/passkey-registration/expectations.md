@@ -5,4 +5,4 @@
 *   The client invokes browser native passkey creation prompt upon clicking the button trigger.
 *   The client decodes server creation options via parseCreationOptionsFromJSON before invoking the authenticator.
 *   The client submits the resulting attestation to the verification endpoint as JSON-encoded credential data containing the credential id.
-*   If the verification fails with a bad status or throws a network exception, signalUnknownCredential is automatically triggered.
+*   If the verification endpoint rejects the attestation with HTTP 400, signalUnknownCredential is triggered after feature-detecting it; it is not triggered after a network exception or a 5xx response.
