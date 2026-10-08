@@ -9,7 +9,7 @@
 
     @layer demo {
       @media (prefers-reduced-motion: no-preference) {
-        @supports ((animation-timeline: scroll())) {
+        @supports ((animation-timeline: view()) and (animation-range: entry) and (order: sibling-index())) {
           @keyframes parallax {
             from {
               transform: translateY(calc(100px * sibling-index()));

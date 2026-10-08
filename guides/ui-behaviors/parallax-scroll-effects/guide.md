@@ -64,7 +64,7 @@ Here’s how to create a basic parallax effect:
 
 5.  **Stagger the animations:** To make the layers move at different speeds, you can use one of two main approaches: **staggering in the keyframes**, or **staggering the `animation-range`**. 
 
-    Both of these approaches can use hardcoded values, or can use the `sibling-index()`/`sibling-count()` implementation. The hardcoded values are easiest and also useful when having only a limited amount of layers. The `sibling-index()`/`sibling-count()` implementation is handy when you have many layers.
+    Both of these approaches can use hardcoded values, or can use the `sibling-index()`/`sibling-count()` implementation. The hardcoded values are easiest and also useful when having only a limited amount of layers. The `sibling-index()`/`sibling-count()` implementation is handy when you have many layers, but it shipped later than scroll-driven animations (for example, Safari 26.2 versus 26.0), so add `(order: sibling-index())` to the `@supports` condition when you use it; otherwise browsers with scroll-driven animations but no `sibling-index()` drop the keyframe or range and the layers stop moving apart.
 
     *   **Staggering in the keyframes:**
 
@@ -112,25 +112,25 @@ Here’s how to create a basic parallax effect:
 
 ## Example code
 
+Both examples run the animation only when the user has not asked for reduced motion and the browser supports everything the effect uses.
+
 ```css
-@keyframes parallax {
-  from {
-    transform: translateY(calc(100px * sibling-index()));
-  }
-}
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((animation-timeline: view()) and (animation-range: entry) and (order: sibling-index())) {
+    @keyframes parallax {
+      from {
+        transform: translateY(calc(100px * sibling-index()));
+      }
+    }
 
-.wrapper {
-  view-timeline: --wrapper;
-}
+    .wrapper {
+      view-timeline: --wrapper;
+    }
 
-.layer {
-  animation: parallax linear both;
-  animation-timeline: --wrapper;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .layer {
-    animation: none;
+    .layer {
+      animation: parallax linear both;
+      animation-timeline: --wrapper;
+    }
   }
 }
 ```
@@ -138,28 +138,28 @@ Here’s how to create a basic parallax effect:
 Alternatively, you can use the `animation-range` property to achieve a similar effect:
 
 ```css
-@keyframes parallax {
-  from {
-    transform: translateY(700px);
-  }
-}
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((animation-timeline: view()) and (animation-range: entry) and (order: sibling-index())) {
+    @keyframes parallax {
+      from {
+        transform: translateY(700px);
+      }
+    }
 
-.wrapper {
-  view-timeline: --wrapper;
-}
+    .wrapper {
+      view-timeline: --wrapper;
+    }
 
-.layer {
-  animation: parallax linear both;
-  animation-timeline: --wrapper;
-  animation-range: entry 25% exit calc(100% / sibling-count() * sibling-index());
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .layer {
-    animation: none;
+    .layer {
+      animation: parallax linear both;
+      animation-timeline: --wrapper;
+      animation-range: entry 25% exit calc(100% / sibling-count() * sibling-index());
+    }
   }
 }
 ```
+
+With hardcoded `--offset` values or per-layer `animation-range` rules instead of `sibling-index()`, drop `(order: sibling-index())` from the condition.
 
 ## Best Practices
 
@@ -167,6 +167,7 @@ When using scroll-driven animations, it's important to follow a few best practic
 
 - **DO** include feature detection: Not all browsers support scroll-driven animations. Use `@supports ((animation-timeline: view()) and (animation-range: entry))` to check for support and provide a fallback for browsers that don't support it.
   - The `(animation-range: entry)` check **MUST** be included here, to filter out browsers with only partial support.
+  - When the effect uses `sibling-index()` or `sibling-count()`, also include `(order: sibling-index())`.
   - **DO NOT** use the `scroll-timeline-polyfill` package for the fallback strategy as it is not feature complete and has a lot of known issues.
   - If the animation is only considered to be decorative, opt for Progressive Enhancement and **DO NOT** provide a fallback.
 - **DO** respect user preferences: Some users prefer to have less motion on the web. Use the `prefers-reduced-motion` media query to disable or reduce your animations for these users.
@@ -189,18 +190,26 @@ In browsers with built-in support for scroll-driven animations, ALWAYS use the n
 
 Note that not every effect can be recreated using the fallbacks approach.
 
-For this use-case specifically, the following script applies the fallback for browsers that do not support scroll-driven animations. It uses an `IntersectionObserver` to track the visibility of the `.wrapper` element and updates the `transform` property of the layers based on the scroll position.
+For this use-case specifically, the following script applies the fallback for browsers that do not support the first example above. It uses an `IntersectionObserver` to track the visibility of the `.wrapper` element and updates the `transform` property of the layers based on the scroll position. It tests the same `@supports` condition as the CSS, so exactly one of the two runs, and it honors `prefers-reduced-motion` like the CSS does.
 
 ```js
-// Fallback for browsers that don't support scroll-driven animations
-if (!CSS.supports('(animation-timeline: view()) and (animation-range: entry)')) {
+// Fallback for browsers that don't support the native effect
+const nativeParallax = CSS.supports(
+  '(animation-timeline: view()) and (animation-range: entry) and (order: sibling-index())'
+);
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+if (!nativeParallax) {
   const wrapper = document.querySelector('.wrapper');
   const layers = document.querySelectorAll('.layer');
+  let wrapperVisible = false;
 
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        window.addEventListener('scroll', onScroll);
+      wrapperVisible = entry.isIntersecting;
+      if (wrapperVisible) {
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
       } else {
         window.removeEventListener('scroll', onScroll);
       }
@@ -210,6 +219,12 @@ if (!CSS.supports('(animation-timeline: view()) and (animation-range: entry)')) 
   observer.observe(wrapper);
 
   function onScroll() {
+    // Match the CSS: no parallax motion when the user prefers reduced motion.
+    if (reduceMotion.matches) {
+      layers.forEach(layer => layer.style.removeProperty('transform'));
+      return;
+    }
+
     const scrollY = window.scrollY;
     const wrapperRect = wrapper.getBoundingClientRect();
     const wrapperTop = wrapperRect.top + scrollY;
@@ -220,16 +235,18 @@ if (!CSS.supports('(animation-timeline: view()) and (animation-range: entry)')) 
       const scrollPercent = (scrollY - (wrapperTop - windowHeight)) / (wrapperHeight + windowHeight);
       
       layers.forEach((layer, index) => {
-        // This matches the effect as defined in the CSS example above.
-        // Customize this further if needed.
-        const initialTranslateY = 100 * index;
+        // This matches the first CSS example: sibling-index() is 1-based, so the
+        // first layer starts 100px down. Customize this further if needed.
+        const initialTranslateY = 100 * (index + 1);
         const translateY = initialTranslateY * (1 - scrollPercent);
         layer.style.transform = `translateY(${translateY}px)`;
       });
     }
   }
 
-  // Trigger onScroll once to set initial positions
-  onScroll();
+  // Re-apply (or clear) the positions when the motion preference changes.
+  reduceMotion.addEventListener('change', () => {
+    if (wrapperVisible) onScroll();
+  });
 }
 ```
