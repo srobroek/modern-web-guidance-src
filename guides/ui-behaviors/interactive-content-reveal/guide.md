@@ -29,7 +29,7 @@ To enable smooth interpolation of gradient stop values, you must register the va
 }
 ```
 
-The custom properties tracking the pointer position do not need to be transitioned, so it is not required to register them.
+The custom properties tracking the pointer position do not need to be transitioned, so it is not required to register them. Give them a `var()` fallback, though: until the first `pointermove` they are undefined, which makes the whole `mask-image` invalid at computed-value time, so it falls back to `none` and shows the entire layer.
 
 ### 2. Define the Masking Layer
 Apply the `mask-image` to the element you want to reveal. Use a `radial-gradient` that references the registered properties.
@@ -39,9 +39,9 @@ Apply the `mask-image` to the element you want to reveal. Use a `radial-gradient
   /* Only transition the size properties, NOT the position variables */
   transition: --inner-size 0.2s ease-in-out, --outer-size 0.2s ease-in-out;  
 
-  /* The spotlight is defined by the transparent center of the mask */
+  /* The spotlight is the opaque (black) center of the mask; the transparent rest hides the layer */
   mask-image: radial-gradient(
-    circle at var(--mouse-x) var(--mouse-y),
+    circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
     black var(--inner-size, 0%),
     transparent var(--outer-size, 0%)
   );
@@ -53,32 +53,35 @@ Apply the `mask-image` to the element you want to reveal. Use a `radial-gradient
   pointer-events: none;
 }
 
-/* Update the gradients stops on interaction */
-.reveal-layer:hover {
+/* Update the gradient stops on interaction. Trigger from the container:
+   with pointer-events: none, .reveal-layer itself never matches :hover. */
+.container:is(:hover, :focus-within) .reveal-layer {
   --inner-size: 100px;
   --outer-size: 120px;
-}  
+}
 ```
 
 ### 3. Update Coordinates with JavaScript
-Track the pointer position and update the CSS variables. Because the properties are registered and have a `transition` defined, the spotlight will move smoothly even if the pointer events are infrequent.
+Track the pointer position and update the CSS variables. Only the size properties are registered and transitioned, so the spotlight follows the pointer exactly as often as `pointermove` fires; it grows and shrinks smoothly, but does not glide between positions.
 
 ```javascript
 const container = document.querySelector('.container');
 // Store the container's bounding rect
 let rect = container.getBoundingClientRect();
-// Update the rect when the container is resized
-const resizeObserver = new ResizeObserver(()=>{
+const updateRect = () => {
   rect = container.getBoundingClientRect();
-})
-resizeObserver.observe(container);
+};
+// The rect is viewport-relative: refresh it when the container is resized
+// and when the page or any ancestor scroller scrolls.
+new ResizeObserver(updateRect).observe(container);
+document.addEventListener('scroll', updateRect, { capture: true, passive: true });
 
 container.addEventListener('pointermove', (e) => {
   // Calculate position as a percentage of the container.
   const x = ((e.clientX - rect.left) / rect.width) * 100;
   const y = ((e.clientY - rect.top) / rect.height) * 100;
 
-  // Update the registered properties
+  // Update the (unregistered) position properties
   container.style.setProperty('--mouse-x', `${x}%`);
   container.style.setProperty('--mouse-y', `${y}%`);
 });
@@ -109,7 +112,7 @@ Browsers that support `mask-image` but not `@property` will still show the spotl
 ```css
 .reveal-layer {
   mask-image: radial-gradient(
-    circle at var(--mouse-x) var(--mouse-y),
+    circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
     /* Use fallback values when using the `var()` function for browsers that don't get an initial value from the @property registration. */
     black var(--inner-size, 0%),
     transparent var(--outer-size, 0%)

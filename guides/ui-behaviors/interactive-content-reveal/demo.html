@@ -73,7 +73,7 @@
       }
       @media (prefers-reduced-motion: reduce) {
         .reveal-layer {
-          transition-duration: 0;
+          transition-duration: 0s;
         }
       }
 
@@ -93,10 +93,12 @@
     <script>
       const card = document.getElementById("card");
       let rect = card.getBoundingClientRect();
-      const resizeObserver = new ResizeObserver(()=>{
+      const updateRect = () => {
         rect = card.getBoundingClientRect();
-      })
-      resizeObserver.observe(card);
+      };
+      // The rect is viewport-relative: refresh it on resize and on any scroll.
+      new ResizeObserver(updateRect).observe(card);
+      document.addEventListener("scroll", updateRect, { capture: true, passive: true });
       card.addEventListener("pointermove", (e) => {
         const x = ((e.clientX - rect.left) / rect.width) * 100;
         const y = ((e.clientY - rect.top) / rect.height) * 100;
