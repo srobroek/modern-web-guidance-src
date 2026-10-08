@@ -114,9 +114,10 @@ By assigning both parts the same background color, they visually merge into a si
   border-top-right-radius: 16px;
   border-bottom-right-radius: 16px;
 
-  /* Reference the SVG mask */
-  -webkit-mask-image: url(#card-accent-mask);
-  mask-image: url(#card-accent-mask);
+  /* Reference the SVG mask by its id. A url() that points to no <mask>
+     counts as a fully transparent mask layer and hides the element. */
+  -webkit-mask-image: url(#accent-stencil);
+  mask-image: url(#accent-stencil);
 }
 </style>
 ```
