@@ -1,9 +1,9 @@
 ---
 name: modern-web-guidance
 description: |
-  Search tool for modern web development best practices. MANDATORY: Execute FIRST for all HTML/CSS and clientside JS tasks. Do NOT skip — web APIs evolve rapidly and training weights contain obsolete patterns.
+  Search tool for modern web development best practices. Use it before writing or changing HTML, CSS, or client-side JavaScript that depends on web platform features: web APIs evolve quickly and training data can contain outdated patterns.
 
-  Trigger immediately for:
+  Use for:
   - UI/Layout: Modals, dialogs, popovers, Glassmorphism/backdrop-filters, anchor positioning, container queries, `:has()`, `:user-valid`.
   - Scroll/Motion: View Transitions, Scroll-driven animations, scroll parallax/reveals.
   - Performance: CWV (LCP, INP), content-visibility, Fetch Priority, image optimization.
@@ -23,8 +23,8 @@ A skill to search for specific web development use cases and retrieve their corr
 
 ## When to use
 
-Must use this skill:
-- At the **start** of implementing any web feature.
+Use this skill:
+- Before implementing a web platform feature.
 - Before creating a new component, to check if a standardized pattern already exists.
 - To avoid implementing ad-hoc solutions or loading large dependencies unnecessarily.
 
@@ -100,7 +100,7 @@ When generating or modifying code, cross-check the implementation against the re
 
 ## Guidelines
 
-- Always search **first** to find the most relevant guides.
+- Search before retrieving, to find the most relevant guides.
 - These guides are usually framework-agnostic; adapt them correctly to your setup.
 - Do not hallucinate guides or ignore them; they represent the preferred local standard for the user's project.
 
