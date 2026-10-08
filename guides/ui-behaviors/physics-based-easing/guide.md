@@ -62,11 +62,12 @@ This example shows how to use a custom `linear()` function to create a bounce ef
 *   **Performance:** For the smoothest physics-based animations, apply `linear()` to properties that run on a separate thread, such as `transform` and `opacity`.
 *   **Precision vs. Payload:** While more stops result in a smoother curve, they also increase the size of your CSS. Most generators allow you to "simplify" the curve to find the optimal balance between smoothness and code size.
 *   **Avoid Opacity for Bounces:** Applying bounce easings to `opacity` can cause visually jarring flickering if the value overshoots below 0 or above 1.
-*   **Accessibility:** Complex physics-based animations can be distracting or cause motion sensitivity for some users. Always respect user preferences by reducing or disabling these animations.
+*   **Accessibility:** Complex physics-based animations can be distracting or cause motion sensitivity for some users. Always respect user preferences by reducing or disabling these animations. Target the same selectors that set the transition (here `.spring` and `.bounce`), or the override does nothing.
 
 ```css
 @media (prefers-reduced-motion: reduce) {
-  .element {
+  .spring,
+  .bounce {
     transition: none;
   }
 }
@@ -75,6 +76,8 @@ This example shows how to use a custom `linear()` function to create a bounce ef
 ### Fallback strategies
 
 {{ BASELINE_STATUS("linear-easing") }}
+
+`linear()` is Baseline Widely available, so it needs no fallback for that target, and no JavaScript animation library is needed to get spring or bounce curves. If your Baseline target includes older browsers (before Chrome 113, Firefox 112, or Safari 17.2), the fallbacks below give them a standard easing curve instead: the element still transitions, only without the overshoot.
 
 #### CSS Fallback
 For browsers that do not support `linear()`, provide a standard easing function as a fallback. The browser will ignore the `linear()` value if it doesn't recognize it, falling back to the previous valid declaration.
@@ -89,38 +92,15 @@ For browsers that do not support `linear()`, provide a standard easing function 
 }
 ```
 
-#### JavaScript Library Fallback (Motion/GSAP)
-
-Optional: If a high-fidelity physics animation is critical even in older browsers, use a JavaScript library like **Motion** (motion.dev) or **GSAP** (greensock.com) to handle the animation when `linear()` is unsupported.
-
-1.  **Detect support:** Use `CSS.supports()` to check if the browser handles the `linear()` function.
-2.  **Conditionally load/apply:** If unsupported, use the library's spring or bounce implementation.
-
-```javascript
-/* Detect if the browser supports the linear() function */
-const supportsLinearEasing = window.CSS && CSS.supports('animation-timing-function', 'linear(0, 1)');
-
-if (!supportsLinearEasing) {
-  /* 
-     Example using Motion (motion.dev) for a spring fallback.
-     This should only be initialized if native CSS support is missing.
-  */
-  import("https://cdn.jsdelivr.net/npm/motion@latest/dist/motion.js").then(({ animate, spring }) => {
-    animate(".element", { transform: "scale(1.2)" }, {
-      easing: spring({ stiffness: 100, damping: 10 })
-    });
-  });
-}
-```
-
-You can also use `@supports` in CSS for more explicit feature detection:
+This declaration-order fallback only works when `linear()` is written out literally. When the curve comes from a custom property, as in the examples above (`var(--spring-easing)`), the browser cannot reject the declaration at parse time: it becomes invalid at computed-value time and resets to the initial value (no transition at all) instead of falling back to the earlier declaration. In that case, use `@supports`:
 
 ```css
-@supports not (animation-timing-function: linear(0, 1)) {
-  .element {
+@supports not (transition-timing-function: linear(0, 1)) {
+  .spring {
     /* Alternative experience for unsupported browsers */
-    transition-duration: 0.4s;
-    transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: scale 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 }
 ```
+
+Place this rule before the `prefers-reduced-motion` override so the override still wins.
