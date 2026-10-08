@@ -60,6 +60,16 @@
         }
       }
 
+      .Drawer-sheet > header {
+        grid-template-columns: 1fr auto;
+        align-items: center;
+      }
+
+      .Drawer-close {
+        color: inherit;
+        font: inherit;
+      }
+
       nav > ul > li {
         padding: 1em var(--gap);
         border-top: 1px solid #fff2;
@@ -175,6 +185,7 @@
     const openBtn = document.getElementById('drawer-open');
     const scroller = drawer.querySelector('.Drawer-scroller');
     const sheet = drawer.querySelector('.Drawer-sheet');
+    const closeBtn = drawer.querySelector('.Drawer-close');
 
     async function openDrawer() {
       // Promote to the top layer before scrolling.
@@ -204,13 +215,26 @@
     }
 
     function onDrawerClosed() {
-      drawer.hidePopover();
+      // Restore focus only if the drawer was open and focus is on the sheet,
+      // or was dropped to <body> by a tap on the non-focusable backdrop.
+      const active = document.activeElement;
+      const restoreFocus = drawer.matches(':popover-open') &&
+        (drawer.contains(active) || active === document.body);
+      // Un-inert the page first: focus can't move to the trigger while it
+      // is inside an inert <main>.
       main.inert = false;
+      drawer.hidePopover();
       openBtn.setAttribute('aria-expanded', 'false');
+      // Return focus to the trigger so keyboard and screen-reader users
+      // are not stranded on the hidden sheet.
+      if (restoreFocus) {
+        openBtn.focus();
+      }
     }
 
     function observeButtonClicks() {
       openBtn.addEventListener('click', () => openDrawer());
+      closeBtn.addEventListener('click', () => closeDrawer());
     }
 
     function observeLightDismiss() {
@@ -278,7 +302,10 @@
   <div class="Drawer" id="drawer" popover="manual">
     <div class="Drawer-scroller">
       <nav class="Drawer-sheet" tabindex="-1">
-        <header>Swipe to close</header>
+        <header>
+          <span>Swipe to close</span>
+          <button class="Drawer-close" aria-label="Close menu">✕</button>
+        </header>
         <ul>
           <li><a href="#">Lorem ipsum est</a></li>
           <li><a href="#">dolor sit amet</a></li>

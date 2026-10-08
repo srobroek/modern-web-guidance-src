@@ -40,6 +40,10 @@ The drawer is a single popover containing a horizontal scroller, which contains 
       <!-- tabindex="-1" makes the sheet programmatically focusable so we
            can move focus into it when the drawer opens, without adding it
            to the natural tab order. -->
+      <!-- An explicit close button lets screen-reader, keyboard and switch
+           users dismiss the drawer without the swipe gesture or a tap on
+           the backdrop. -->
+      <button class="Drawer-close" aria-label="Close menu">✕</button>
       <ul>
         <li><a href="/page-1">Page 1</a></li>
         <li><a href="/page-2">Page 2</a></li>
@@ -250,11 +254,22 @@ function onDrawerOpened() {
 }
 
 function onDrawerClosed() {
+  // Restore focus only if the drawer was actually open and focus is on
+  // the sheet, or was dropped to <body> by a tap on the non-focusable
+  // backdrop. (The observer also reports "closed" once on page load.)
+  const active = document.activeElement;
+  const restoreFocus = drawer.matches(':popover-open') &&
+    (drawer.contains(active) || active === document.body);
+  // Un-inert the page first: neither hidePopover() nor focus() can move
+  // focus to the trigger while it is still inside an inert <main>.
+  document.querySelector('main').inert = false;
   // Hide the popover only after the close animation completes,
   // so the slide-out is visible to the user.
   drawer.hidePopover();
-  document.querySelector('main').inert = false;
   openBtn.setAttribute('aria-expanded', 'false');
+  // MANDATORY: Return focus to the trigger. Otherwise focus is stranded on
+  // the hidden sheet (or lost) after Escape, a backdrop tap or a swipe.
+  if (restoreFocus) openBtn.focus();
 }
 
 // Treat "any pixel of the sheet visible inside the popover root" as
@@ -284,6 +299,9 @@ observer.observe(sheet);
 ```js
 // Open trigger.
 openBtn.addEventListener('click', openDrawer);
+
+// Close button inside the sheet.
+drawer.querySelector('.Drawer-close').addEventListener('click', closeDrawer);
 
 // Light-dismiss: a tap on the dimmed area (anywhere inside the
 // popover but outside the sheet) closes the drawer. We implement
