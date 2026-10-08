@@ -199,7 +199,7 @@
     <section class="control-group">
       <h2>Global Theme Controls</h2>
       
-      <!-- Manual Theme Switcher (Best Practice) -->
+      <!-- OPTIONAL: manual theme switcher (see the dark-mode-toggle guide) -->
       <div class="theme-switcher-container">
         <label for="theme-switcher">Manual Theme Toggle:</label>
         <select id="theme-switcher">
@@ -255,7 +255,8 @@
   </main>
 
   <script>
-    // Logic for the manual theme switcher (MANDATORY Best Practice)
+    // OPTIONAL manual theme switcher. An inline style on <html> overrides the
+    // stylesheet's color-scheme: light dark; "system" restores it.
     const switcher = document.getElementById('theme-switcher');
     switcher.addEventListener('change', (e) => {
       const mode = e.target.value;
