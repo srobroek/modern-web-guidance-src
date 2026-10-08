@@ -188,7 +188,10 @@
           statusEl.textContent = 'Passkey Deleted';
           // Re-query and Sync AllAcceptedCredentials list
           const updatedResponse = await fetch('/api/credentials');
+          // Only a successful, complete list may be signaled: omitted IDs get hidden
+          if (!updatedResponse.ok) throw new Error('Failed to reload credentials');
           const updatedList = await updatedResponse.json();
+          if (!Array.isArray(updatedList)) throw new Error('Malformed credentials list');
           renderUI(updatedList); // Visual helper
           await syncAcceptedCredentials(updatedList);
         } else {

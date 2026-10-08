@@ -14,7 +14,7 @@ This guide details how to enable users to view, rename, and delete their registe
 
 Your backend database layer and endpoints MUST support common CRUD actions for registered credentials as well as updating user profile details. Decoupled from framework-specific libraries, the server exposes endpoints to:
 
-1.  **List all user credentials**: Fetch all `StoredPasskeyCredential` records matching the signed-in user's ID.
+1.  **List all user credentials**: Fetch all `StoredPasskeyCredential` records matching the signed-in user's ID. Return the complete list in one response (no pagination), because the client passes it to `signalAllAcceptedCredentials()`.
 2.  **Update credential names**: Accept a new custom nickname for a specific credential ID and persist the update on the server.
 3.  **Delete credentials**: Remove a specific credential ID from the database.
 4.  **Update user account details**: Accept updated `name` (username) and `displayName` values for the signed-in user's profile so the client can synchronize them with the passkey provider.
@@ -80,7 +80,10 @@ The Signal API lets the application communicate credential states to password ma
 
 *   **Feature Detection & Parameter Encoding Rule**:
     *   Always feature-detect Signal API methods before invoking them (`if (PublicKeyCredential.signalAllAcceptedCredentials)` and `if (PublicKeyCredential.signalCurrentUserDetails)`).
-    *   All `userId` and credential ID parameters passed to Signal API methods (`signalAllAcceptedCredentials`, `signalCurrentUserDetails`) MUST be **Base64URL-encoded strings**.
+    *   All `userId` and credential ID parameters passed to Signal API methods (`signalAllAcceptedCredentials`, `signalCurrentUserDetails`) MUST be **Base64URL-encoded strings**. The `rpId` parameter is required and MUST match the RP ID the server uses.
+*   **Complete List Rule**:
+    *   Call `signalAllAcceptedCredentials()` ONLY with the list from a successful (`response.ok`) credential list request made by the signed-in user. The passkey provider hides or removes every credential missing from `allAcceptedCredentialIds`, possibly irreversibly, so a failed, partial, or malformed list response would hide valid passkeys.
+    *   If the list request fails, show an error and skip the signal.
 *   **Initiating Page Load Sync**:
     *   The application MUST invoke `signalAllAcceptedCredentials()` automatically when the management page loads (for example, inside a `DOMContentLoaded` event listener, module initialization, or framework component mount hook such as `useEffect`).
 *   **Management Updates Sync**:
@@ -89,15 +92,34 @@ The Signal API lets the application communicate credential states to password ma
 
 ```javascript
 // Client-side management synchronization ES module
+// listFetch, renameCredentialFetch, updateUserFetch and deleteFetch are app-defined
+// wrappers around fetch() that resolve to the Response. renderUI and showListError are app-defined UI helpers.
 import { listFetch, renameCredentialFetch, updateUserFetch, deleteFetch } from './api.js';
+
+// The same RP ID constant the server uses when it generates options
+const rpId = 'example.com';
 
 // Base64URL-encoded User ID string (illustration only)
 const base64UrlUserId = "M2YPl-KGnA8";
 
-async function syncAcceptedCredentials(currentCredentialsList) {
+// Returns the complete credential list, or throws if the server did not return one
+async function fetchCredentialList() {
+  const response = await listFetch();
+  if (!response.ok) {
+    throw new Error(`Credential list request failed with HTTP ${response.status}`);
+  }
+  const list = await response.json();
+  if (!Array.isArray(list)) {
+    throw new Error('Credential list response is not an array');
+  }
+  return list;
+}
+
+// Only call with a list returned by fetchCredentialList()
+async function syncAcceptedCredentials(completeCredentialsList) {
   if (!window.PublicKeyCredential || !PublicKeyCredential.signalAllAcceptedCredentials) return;
   try {
-    const credentialIds = currentCredentialsList.map(c => c.id); // Array of Base64URL credential ID strings
+    const credentialIds = completeCredentialsList.map(c => c.id); // Array of Base64URL credential ID strings
     
     await PublicKeyCredential.signalAllAcceptedCredentials({
       rpId, // RP ID must match the one defined on the server
@@ -109,24 +131,30 @@ async function syncAcceptedCredentials(currentCredentialsList) {
   }
 }
 
-async function loadManagementPanel() {
-  const response = await listFetch();
-  const list = await response.json();
-  
+// Fetch, render and sync. A failed list request never reaches the signal.
+async function refreshCredentials() {
+  let list;
+  try {
+    list = await fetchCredentialList();
+  } catch (e) {
+    console.error(e);
+    showListError('Could not load your passkeys. Try again.');
+    return;
+  }
   renderUI(list);
-  // Sync accepted credentials on initial load
   await syncAcceptedCredentials(list);
+}
+
+async function loadManagementPanel() {
+  // Sync accepted credentials on initial load
+  await refreshCredentials();
 }
 
 async function performDelete(credentialId) {
   const response = await deleteFetch(credentialId);
   if (response.ok) {
-    const updatedResponse = await listFetch();
-    const updatedList = await updatedResponse.json();
-    
-    renderUI(updatedList);
     // Sync remaining accepted credentials after deletion
-    await syncAcceptedCredentials(updatedList);
+    await refreshCredentials();
   }
 }
 
@@ -134,13 +162,12 @@ async function performDelete(credentialId) {
 async function performCredentialRename(credentialId, newCredentialName) {
   const response = await renameCredentialFetch(credentialId, { name: newCredentialName });
   if (response.ok) {
-    const updatedResponse = await listFetch();
-    renderUI(await updatedResponse.json());
+    renderUI(await fetchCredentialList());
   }
 }
 
 // Renaming the user's account username or displayName triggers signalCurrentUserDetails
-async function performUserRename(rpId, userId, updatedName, updatedDisplayName) {
+async function performUserRename(userId, updatedName, updatedDisplayName) {
   const response = await updateUserFetch({ name: updatedName, displayName: updatedDisplayName });
   if (response.ok && window.PublicKeyCredential && PublicKeyCredential.signalCurrentUserDetails) {
     try {
@@ -216,8 +243,7 @@ if (aaguid === '00000000-0000-0000-0000-000000000000') {
 
 {{ BASELINE_STATUS("webauthn", "api.PublicKeyCredential.getClientCapabilities_static") }}
 
-Always install 'webauthn-polyfills' and import it in the context.
-Consider as long as  `PublicKeyCredential` is supported, `PublicKeyCredential.getClientCapabilities` is also supported. 
+Import `webauthn-polyfills` once, before any WebAuthn call. The polyfill only installs `PublicKeyCredential.getClientCapabilities()` in browsers that lack it, and corrects the result on Safari 17.4–18.3, which reports `conditionalMediation` instead of `conditionalGet`. Browsers covered by the Baseline status above keep their native implementation. After the import, you can call `getClientCapabilities()` wherever `PublicKeyCredential` exists.
 
 ```js 
 import 'webauthn-polyfills';
@@ -226,15 +252,9 @@ import 'webauthn-polyfills';
 ### Signal API Synchronization Fallback
 
 {{ BASELINE_STATUS("webauthn-signals") }}
-If the browser does not support `PublicKeyCredential.parseRequestOptionsFromJSON`, use the 'webauthn-polyfills': 
-  
-```html 
-<script type="module"> 
-  if (!PublicKeyCredential.parseRequestOptionsFromJSON) { 
-     await import('https://unpkg.com/webauthn-polyfills'); 
-   } 
- </script> 
- ``` 
 
-This will also add support for `PublicKeyCredential.prototype.toJSON`.
+`webauthn-polyfills` does not add the Signal API methods, so there is no polyfill for them:
+
+*   **Gate every call**: Check `PublicKeyCredential.signalAllAcceptedCredentials` and `PublicKeyCredential.signalCurrentUserDetails` before calling them, as in the code example above. If a method is missing, skip the call; listing, renaming, and deleting still work through your server endpoints.
+*   **Tell the user what the browser did not do**: Without `signalAllAcceptedCredentials()`, a passkey deleted on your server stays in the user's passkey provider. After a successful delete in a browser without the method, tell the user to also remove the passkey from their password manager. Without `signalCurrentUserDetails()`, the provider keeps showing the old username or display name until the user edits it there.
 
