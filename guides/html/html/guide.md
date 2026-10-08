@@ -226,10 +226,11 @@ See {{ GUIDE_REF("declarative-dialog-popover-control") }} for more info on fallb
 
 <!-- Modal Dialog with Form-based closing -->
 <button id="show-dialog">Open dialog</button>
-<dialog id="fav-modal">
+<!-- aria-labelledby gives the dialog an accessible name that screen readers announce on open -->
+<dialog id="fav-modal" aria-labelledby="fav-modal-title">
   <!-- method="dialog" closes the dialog natively and sets the returnValue -->
   <form method="dialog">
-    <p>Confirm action?</p>
+    <h2 id="fav-modal-title">Confirm action?</h2>
     <button value="cancel">Cancel</button>
     <button value="confirm">Confirm</button>
   </form>
@@ -293,7 +294,7 @@ See {{ GUIDE_REF("declarative-dialog-popover-control") }} for more info on fallb
 ### Guidelines
 
 - **DO** use the global `inert` attribute for entire hidden sections (off-screen menus, background while custom modal is open) to remove them from tab flows and accessibility trees.
-- **DO** pair `[inert]` with CSS (`opacity: 0.5`) to visually signify inactivity.
+- **DO** pair `[inert]` with CSS (`opacity: 0.5`) on the inert container only to visually signify inactivity. **DON'T** also target `[inert] *`: opacity multiplies at every nesting level (0.5, 0.25, 0.125…), so deeply nested content fades toward invisible.
 - **DO** rely on natural DOM order for sequential navigation. 
 
 - **DON'T** use positive `tabindex` values (e.g., `1`, `2`). Use `0` to add element to tab flow, or `-1` for JS program focus.
@@ -313,7 +314,8 @@ See {{ GUIDE_REF("declarative-dialog-popover-control") }} for more info on fallb
 ```
 
 ```css
-[inert], [inert] * {
+/* Style only the inert boundary; descendants inherit the visual result. */
+[inert] {
   opacity: 0.5;
   cursor: default;
   user-select: none;
@@ -356,7 +358,7 @@ See {{ GUIDE_REF("forms") }} for more details on creating modern web forms.
 - **DO** set `width` and `height` to prevent layout shifts (CLS) on `<video>` elements.
 - **DO** provide a `poster` image fallback for videos.
 - **DO** include subtitles and captions with `<track>`.
-- **DO** ensure background videos are `muted`, provide users with full control over playback, and use `role="none"` or `aria-hidden="true"`. The `controls` attribute must also be omitted to make sure the video is not focusable.  
+- **DO** make decorative background videos `muted` and `playsinline`, omit the `controls` attribute so the video is not focusable, and hide it with `aria-hidden="true"`. Because the video has no native controls, provide a separate, visible `<button>` that pauses and resumes it (motion that plays for more than 5 seconds needs a pause mechanism), and do not start it when the user prefers reduced motion.
 
 - **DON'T** rely on JS for basic video controls if native `controls` attribute is sufficient.
 - **DON'T** apply `role="none"` or `aria-hidden="true"` to focusable elements (such as embedded interactive `<iframe>` components). Hiding elements from the assistive technology tree while leaving them accessible to sequential keyboard navigation violates core accessibility heuristics. The background video exception holds solely because omitting the `controls` attribute renders the `<video>` element fully non-focusable.
@@ -374,6 +376,32 @@ See {{ GUIDE_REF("forms") }} for more details on creating modern web forms.
   <source src="intro.mp4" type="video/mp4">
   <track src="caps.vtt" kind="captions" srclang="en" label="English">
 </video>
+
+<!-- Decorative background video: no native controls, hidden from assistive technology,
+     with its own pause/play button -->
+<div class="hero">
+  <video id="hero-video" muted loop playsinline aria-hidden="true" width="1280" height="720" poster="hero.webp">
+    <source src="hero.webm" type="video/webm">
+  </video>
+  <button type="button" id="hero-toggle">Pause background video</button>
+</div>
+
+<script>
+  const heroVideo = document.getElementById('hero-video');
+  const heroToggle = document.getElementById('hero-toggle');
+  const syncLabel = () => {
+    heroToggle.textContent = heroVideo.paused ? 'Play background video' : 'Pause background video';
+  };
+  heroVideo.addEventListener('play', syncLabel);
+  heroVideo.addEventListener('pause', syncLabel);
+  heroToggle.addEventListener('click', () => (heroVideo.paused ? heroVideo.play() : heroVideo.pause()));
+
+  // Start motion only for users who have not asked for reduced motion.
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    heroVideo.play().catch(syncLabel); // play() rejects if the browser blocks autoplay
+  }
+  syncLabel();
+</script>
 ```
 
 ## 9. Dynamic Styles and Interactivity
