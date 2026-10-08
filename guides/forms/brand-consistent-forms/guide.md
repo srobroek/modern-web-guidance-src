@@ -79,11 +79,11 @@ body {
 
 {{ BASELINE_STATUS("accent-color") }}
 
-For browsers that do not support `accent-color`, the form controls fall back to the browser's default appearance. To ensure full brand consistency and high reliability across all environments, you MUST implement a custom fallback strategy using the established "visually hidden input" technique.
+`accent-color` is a progressive enhancement. In browsers that do not support it, checkboxes, radio buttons, range sliders and progress bars keep the browser's default color and still work, with all their states and accessibility intact. That default is an acceptable fallback; do not replace native controls just to tint them.
 
-### Progressive Enhancement with `@supports not`
+### Optional: custom controls with `@supports not`
 
-You MUST use the `@supports not` rule to apply custom fallback styles only when `accent-color` is not supported. This ensures you leverage the simplicity of `accent-color` for modern browsers while guaranteeing a consistent branded experience for older ones.
+Add a custom fallback only when your browser support policy requires branded controls in browsers without `accent-color`. Scope it with `@supports not`, so browsers that support `accent-color` keep the native controls, and use the "visually hidden input" technique so the native input stays focusable and announced.
 
 #### 1. HTML Structure
 Ensure your labels wrap the text in a `<span>` to allow for sibling selectors in CSS:
@@ -250,9 +250,9 @@ input[type="range"]::-webkit-slider-runnable-track {
 }
 ```
 
-2. **Add JavaScript**: Update the variable on the `input` event:
+2. **Add JavaScript**: Update the variable on the `input` event. Test support with the two-argument `CSS.supports(property, value)`: a bare property name such as `CSS.supports('accent-color')` is not a valid condition and always returns `false`, so the fallback would run everywhere.
 ```javascript
-if (!CSS.supports('accent-color')) {
+if (!CSS.supports('accent-color', 'auto')) {
   const slider = document.getElementById('volume');
   slider.addEventListener('input', (e) => {
     e.target.style.setProperty('--progress', `${e.target.value}%`);
