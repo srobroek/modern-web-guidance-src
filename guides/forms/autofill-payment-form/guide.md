@@ -89,12 +89,15 @@ Make sure to add appropriate `autocomplete` values in payment card forms. Withou
 <!-- cc-number tells autofill this is a card number, not a generic number field -->
 <!-- inputmode="numeric" gives a numeric keyboard without the increment/decrement spinner -->
 <!-- DO NOT use type="number" — it adds increment/decrement controls and strips leading zeros -->
+<!-- No maxlength: spaces count toward it, so maxlength="19" would reject a spaced 19-digit number.
+     The pattern allows digits and spaces only; check length and checksum after stripping spaces. -->
 <input id="cc-number" name="cc-number" type="text" autocomplete="cc-number"
-       inputmode="numeric" maxlength="19" pattern="[\d ]{13,19}" required>
+       inputmode="numeric" pattern="[\d ]+" required>
 
-<!-- cc-name autofills with the name exactly as it appears on the card; Unicode pattern allows international names -->
+<!-- cc-name autofills with the name exactly as it appears on the card.
+     No pattern: a letters-only pattern rejects apostrophes (O'Brien) and combining marks (अमित). -->
 <input id="cc-name" name="cc-name" type="text" autocomplete="cc-name"
-       maxlength="50" pattern="[\p{L} \-\.]+" required>
+       maxlength="50" required>
 
 <!-- cc-exp autofills the full expiry date as MM/YY -->
 <!-- MANDATORY: Place format hints above the input so autocomplete popovers or virtual keyboards do not obscure them during editing -->
@@ -115,7 +118,9 @@ For payment card and phone numbers use a single input: don't split the number in
 
 You should validate data entry both in realtime and before form submission. One way to do this is by adding a pattern attribute to a payment card input. If the user attempts to submit the payment form with an invalid value, the browser displays a warning message and sets focus on the input.
 
-However, your pattern regular expression must be flexible enough to handle the range of payment card number lengths: from 14 digits (or possibly less) to 20 (or more). Card security codes (also known as CSC, CVC, CVV, or other names) consist of 3 or 4 digits.
+However, your pattern regular expression must be flexible enough to handle the range of payment card number lengths: from 14 digits (or possibly less) to 20 (or more), plus any spaces the user types. Don't cap the field with a `maxlength` that counts digits only. Card security codes (also known as CSC, CVC, CVV, or other names) consist of 3 or 4 digits.
+
+Don't validate the cardholder name with a character pattern. Even a Unicode `\p{L}` letters-only pattern rejects apostrophes, combining marks used by scripts such as Devanagari, and other characters that appear in real names.
 
 Allow users to include spaces when they're entering a new payment card number, since this is how numbers are displayed on physical cards. That's friendlier to the user (you won't have to tell them "they did something wrong"), less likely to interrupt conversion flow, and it's straightforward to remove spaces in numbers before processing.
 
