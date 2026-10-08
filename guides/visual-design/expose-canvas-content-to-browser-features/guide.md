@@ -11,13 +11,14 @@ Regular `<canvas>` content is not exposed to browser features such as screen rea
 
 ## How to implement
 
-1. Check if HTML-in-Canvas is supported in the browser:
+1. Check if HTML-in-Canvas is supported in the browser, and keep a working path for when it is not (see [Fallback strategies](#fallback-strategies)). Without support, children of a `<canvas>` are fallback content and are not rendered, so the fallback branch must show the HTML some other way:
 
-```
-if ('requestPaint' in HTMLCanvasElement.prototype) {
+```js
+const supportsHtmlInCanvas = 'requestPaint' in HTMLCanvasElement.prototype;
+if (supportsHtmlInCanvas) {
   // Use HTML in Canvas API
 } else {
-  // Use fallback strategy
+  // Use fallback strategy, e.g. canvas.after(htmlContent)
 }
 ```
 
@@ -64,9 +65,11 @@ canvas.onpaint = () => {
 };
 ```
 
-- In WebGL context, use the `texElementImage2D` method:
+- In WebGL context, use the `texElementImage2D` method. `gl.RGBA8` is a sized internal format, which WebGL 2 textures accept but WebGL 1 textures do not, so get the context with `getContext('webgl2')`:
 
 ```js
+const gl = canvas.getContext('webgl2');
+
 canvas.onpaint = () => {
   if (gl.texElementImage2D) {
     try {
@@ -78,19 +81,19 @@ canvas.onpaint = () => {
 };
 ```
 
-- In WebGPU context, use the `copyElementImageToTexture` method:
+- In WebGPU context, use the `copyElementImageToTexture` method. The destination texture needs `COPY_DST` and `RENDER_ATTACHMENT` usage:
 
 ```js
 canvas.onpaint = () => {
-  if (root.device.queue.copyElementImageToTexture) {
+  if (device.queue.copyElementImageToTexture) {
     try {
-      const sourceDict = { source: valueElement };
+      const sourceDict = { source: uiElement };
       const destDict = {
         destination: { texture: targetTexture },
-        width: 512,
-        height: 128,
+        width: targetTexture.width,
+        height: targetTexture.height,
       };
-      root.device.queue.copyElementImageToTexture(sourceDict, destDict);
+      device.queue.copyElementImageToTexture(sourceDict, destDict);
     } catch (err) {
       console.error('copyElementImageToTexture copy failed:', err);
     }
@@ -115,7 +118,7 @@ canvas.onpaint = (event) => {
 };
 ```
 
-6. Update the CSS transform.
+6. Update the CSS transform. Assistive technology, hit testing and other browser features use the element's DOM location, so it MUST match where the element is drawn.
 
 - For the 2D context case, apply the transform returned by the rendering call to the `style.transform` property:
 
@@ -130,63 +133,7 @@ canvas.onpaint = () => {
 };
 ```
 
-- For the 3D case with WebGL or WebGPU, the browser needs to map from the 3D coordinate space into the CSS coordinate space using a viewport transform. To facilitate this, do the following:
-  - Convert WebGL MVP Matrix to DOM Matrix.
-  - Normalize the HTML element. HTML elements are sized in pixels (for example, 200px wide). WebGL, however, usually treats objects as "unit squares", for example, ranging from 0 to 1. If you don't normalize, your 200px button will look 200 times larger.
-  - Map to the canvas viewport. This step is the "re-scaling" phase: it stretches that unit-space math back out to match the actual pixel dimensions of your `<canvas>` element on the screen. It also flips the Y-axis, because in WebGL, up is positive, but in CSS, down is positive.
-  - Calculate the final transform. Multiply the matrices in order: Viewport _ MVP _ Normalization. Combining them into one final transform produces a "map" that tells the browser exactly where that HTML element layer should sit to align with the 3D drawing.
-  - Apply the transform to the HTML element. This moves the HTML element layer to sit directly on top of its rendered pixels. This ensures that when a user clicks a button or selects text, they are actually hitting the real HTML element.
-
-  ```js
-  if (canvas.getElementTransform) {
-    // 1. Convert WebGL MVP Matrix to DOM Matrix
-    const mvpDOM = new DOMMatrix(Array.from(htmlElementMVP));
-
-    // 2. Normalize the HTML element (Canvas Grid pixels -> WebGL Model Space)
-    const dprX = canvas.width / canvas.clientWidth;
-    const dprY = canvas.height / canvas.clientHeight;
-    const gridWidth = targetHTMLElement.offsetWidth * dprX;
-    const gridHeight = targetHTMLElement.offsetHeight * dprY;
-
-    const toGLModel = new DOMMatrix()
-      // Scale pixels to 1 unit, flip Y (as in CSS it points down, and in WebGL it points up)
-      .scale(1 / gridWidth, -1 / gridHeight, 1 / gridHeight)
-      // Center the origin: (0,0) becomes (-width/2, -height/2) before scaling
-      .translate(-gridWidth / 2, -gridHeight / 2);
-
-    // 3. Map to the canvas viewport
-    const clipToCanvasViewport = new DOMMatrix()
-      // Move center (0,0) to center of canvas
-      .translate(canvas.width / 2, canvas.height / 2)
-      // Scale normalized clip (-1..1) to viewport size
-      .scale(canvas.width / 2, -canvas.height / 2, canvas.height / 2);
-
-    // 4. Multiply: (Clip -> Pixels) * (MVP) * (pixels -> unit square)
-    const screenSpaceTransform = clipToCanvasViewport
-      .multiply(mvpDOM)
-      .multiply(toGLModel);
-
-    // 5. Apply to the transform
-    const computedTransform = canvas.getElementTransform(
-      targetHTMLElement,
-      screenSpaceTransform,
-    );
-    targetHTMLElement.style.transform = computedTransform.toString();
-  }
-  ```
-
-7. [Troubleshooting] If the developer is experiencing a mismatch in the DOM logical layout in 3D even after applying the CSS transform from step 5, check if the developer is experiencing the issue in Chromium 148 or earlier. If that's the case, check if `transform.is2D` is correctly set to false for a 3D DOMMatrix. If not, re-initialize the DOMMatrix which corrects `is2D` to be false before applying the transform to the target HTML element. This issue is fixed in Chromium 149+, and if the developer is experiencing it in newer Chromium versions, the is2D value is not the cause:
-
-```js
-if (transform.is2D) {
-  // Workaround for Chromium bug https://crbug.com/512171941
-  // affecting Chrome versions under 149 where `transform.is2D`
-  // is incorrectly true for a 3D DOMMatrix. The assignment
-  // below re-initializes the DOMMatrix which corrects is2D to be false.
-  transform = DOMMatrix.fromFloat64Array(transform.toFloat64Array());
-}
-targetHTMLElement.style.transform = computedTransform.toString();
-```
+- For the 3D case with WebGL or WebGPU, compute the CSS transform from your model-view-projection matrix with `canvas.getElementTransform()`, as shown step by step in {{ GUIDE_REF("interactive-content-in-3d-scenes") }}. That guide also covers the `is2D` workaround needed in Chromium 148 and earlier.
 
 ## Example code
 
@@ -205,168 +152,50 @@ targetHTMLElement.style.transform = computedTransform.toString();
 
 <script>
   const canvas = document.getElementById("canvas");
-  const ctx = canvas.getContext("2d");
   const uiElement = document.getElementById("ui-element");
 
-  canvas.onpaint = () => {
-    ctx.reset();
-    // Draw the HTML element at x:0, y:0
-    const transform = ctx.drawElementImage(uiElement, 0, 0);
+  if (!('requestPaint' in HTMLCanvasElement.prototype)) {
+    // Fallback: without HTML-in-Canvas the canvas children are not rendered.
+    // Show the content as regular DOM so every browser feature still reaches it.
+    canvas.replaceWith(uiElement);
+  } else {
+    const ctx = canvas.getContext("2d");
 
-    // Sync the DOM location with the drawn location
-    uiElement.style.transform = transform.toString();
-  };
+    canvas.onpaint = () => {
+      ctx.reset();
+      // Draw the HTML element at x:0, y:0
+      const transform = ctx.drawElementImage(uiElement, 0, 0);
 
-  // Handle resizing to match device pixels
-  const observer = new ResizeObserver(([entry]) => {
-    const dpc = entry.devicePixelContentBoxSize;
-    canvas.width = dpc
-      ? dpc[0].inlineSize
-      : Math.round(entry.contentRect.width * window.devicePixelRatio);
-    canvas.height = dpc
-      ? dpc[0].blockSize
-      : Math.round(entry.contentRect.height * window.devicePixelRatio);
-    canvas.requestPaint();
-  });
+      // Sync the DOM location with the drawn location
+      uiElement.style.transform = transform.toString();
+    };
 
-  const supportsDevicePixelContentBox =
-    typeof ResizeObserverEntry !== "undefined" &&
-    "devicePixelContentBoxSize" in ResizeObserverEntry.prototype;
-  const options = supportsDevicePixelContentBox
-    ? { box: "device-pixel-content-box" }
-    : {};
-  observer.observe(canvas, options);
+    // Handle resizing to match device pixels
+    const observer = new ResizeObserver(([entry]) => {
+      const dpc = entry.devicePixelContentBoxSize;
+      canvas.width = dpc
+        ? dpc[0].inlineSize
+        : Math.round(entry.contentRect.width * window.devicePixelRatio);
+      canvas.height = dpc
+        ? dpc[0].blockSize
+        : Math.round(entry.contentRect.height * window.devicePixelRatio);
+      canvas.requestPaint();
+    });
+
+    const supportsDevicePixelContentBox =
+      typeof ResizeObserverEntry !== "undefined" &&
+      "devicePixelContentBoxSize" in ResizeObserverEntry.prototype;
+    const options = supportsDevicePixelContentBox
+      ? { box: "device-pixel-content-box" }
+      : {};
+    observer.observe(canvas, options);
+  }
 </script>
 ```
 
-### WebGL Canvas
+### WebGL and WebGPU Canvas
 
-```html
-<canvas id="canvas" layoutsubtree style="width: 400px; height: 400px;">
-  <div id="ui-element">
-    <p>WebGL UI Element</p>
-    <button>Action</button>
-  </div>
-</canvas>
-
-<script>
-  const canvas = document.getElementById("canvas");
-  const gl = canvas.getContext("webgl");
-  const uiElement = document.getElementById("ui-element");
-
-  // Setup WebGL texture...
-  const texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-
-  canvas.onpaint = () => {
-    // 1. Update texture with HTML content
-    if (gl.texElementImage2D) {
-      try {
-        gl.texElementImage2D(gl.TEXTURE_2D, gl.RGBA8, uiElement);
-      } catch (err) {
-        console.error('texElementImage2D copy failed:', err);
-      }
-    }
-
-    // ... Render your 3D scene here, calculating htmlElementMVP matrix ...
-
-    // 2. Sync DOM position with 3D scene
-    if (canvas.getElementTransform) {
-      const mvpDOM = new DOMMatrix(Array.from(htmlElementMVP));
-
-      // Recalculate the DPR compensation mapping
-      const dprX = canvas.width / canvas.clientWidth;
-      const dprY = canvas.height / canvas.clientHeight;
-      const gridWidth = uiElement.offsetWidth * dprX;
-      const gridHeight = uiElement.offsetHeight * dprY;
-
-      const cssToUnitSpace = new DOMMatrix()
-        .scale(1 / gridWidth, -1 / gridHeight, 1 / gridHeight)
-        .translate(-gridWidth / 2, -gridHeight / 2);
-
-      const clipToCanvasViewport = new DOMMatrix()
-        .translate(canvas.width / 2, canvas.height / 2)
-        .scale(canvas.width / 2, -canvas.height / 2, canvas.height / 2);
-
-      const screenSpaceTransform = clipToCanvasViewport
-        .multiply(mvpDOM)
-        .multiply(cssToUnitSpace);
-
-      const computedTransform = canvas.getElementTransform(
-        uiElement,
-        screenSpaceTransform,
-      );
-      uiElement.style.transform = computedTransform.toString();
-    }
-  };
-</script>
-```
-
-### WebGPU Canvas
-
-```html
-<canvas id="canvas" layoutsubtree style="width: 400px; height: 400px;">
-  <div id="ui-element">
-    <p>WebGPU UI Element</p>
-  </div>
-</canvas>
-
-<script>
-  const canvas = document.getElementById("canvas");
-  const context = canvas.getContext("webgpu");
-  const uiElement = document.getElementById("ui-element");
-
-  // Setup WebGPU...
-  // const device = ...
-  // const targetTexture = ...
-
-  canvas.onpaint = () => {
-    // 1. Copy HTML content to texture
-    if (device.queue.copyElementImageToTexture) {
-      try {
-        const sourceDict = { source: uiElement };
-        const destDict = {
-          destination: { texture: targetTexture },
-          width: width,
-          height: height,
-        };
-        device.queue.copyElementImageToTexture(sourceDict, destDict);
-      } catch (err) {
-        console.error('copyElementImageToTexture copy failed:', err);
-      }
-    }
-
-    // 2. Sync DOM position (same matrix math as WebGL)
-    if (canvas.getElementTransform) {
-      const mvpDOM = new DOMMatrix(Array.from(htmlElementMVP));
-
-      // Recalculate the DPR compensation mapping
-      const dprX = canvas.width / canvas.clientWidth;
-      const dprY = canvas.height / canvas.clientHeight;
-      const gridWidth = uiElement.offsetWidth * dprX;
-      const gridHeight = uiElement.offsetHeight * dprY;
-
-      const cssToUnitSpace = new DOMMatrix()
-        .scale(1 / gridWidth, -1 / gridHeight, 1 / gridHeight) // Retain Z scale
-        .translate(-gridWidth / 2, -gridHeight / 2);
-
-      const clipToCanvasViewport = new DOMMatrix()
-        .translate(canvas.width / 2, canvas.height / 2)
-        .scale(canvas.width / 2, -canvas.height / 2, canvas.height / 2); // Retain Z scale
-
-      const screenSpaceTransform = clipToCanvasViewport
-        .multiply(mvpDOM)
-        .multiply(cssToUnitSpace);
-
-      const computedTransform = canvas.getElementTransform(
-        uiElement,
-        screenSpaceTransform,
-      );
-      uiElement.style.transform = computedTransform.toString();
-    }
-  };
-</script>
-```
+For complete WebGL and WebGPU examples, including the support branch and the transform that keeps the DOM location in sync for assistive technology and hit testing, see {{ GUIDE_REF("interactive-content-in-3d-scenes") }}.
 
 ## Best Practices
 
@@ -383,26 +212,10 @@ targetHTMLElement.style.transform = computedTransform.toString();
 
 {{ BASELINE_STATUS("canvas-html") }}
 
-The HTML-in-Canvas API is not currently supported in all modern browsers, thus a fallback strategy is typically required.
+HTML-in-Canvas is experimental. The explainer lists only a Chromium implementation, behind the `chrome://flags/#canvas-draw-element` flag; an origin trial ran in Chrome 148 to 150. The API is still changing: the current explainer replaces `layoutsubtree` with `content="drawable"` and renames the WebGL and WebGPU methods (`texElementSubImage2D()`, `drawElementImageToTexture()`). This guide shows the origin-trial API, so check the [explainer](https://github.com/WICG/html-in-canvas) before you ship.
 
-However, given the improved performance benefits of this API, HTML-in-Canvas should be used if the browser supports it.
+Treat HTML-in-Canvas as a progressive enhancement. The point of this guide is that browser features reach the content, so the fallback MUST keep the content as real, rendered DOM:
 
-The fallback strategy depends on the use case. For example, for an interactive HTML content in canvas, if HTML-in-Canvas is not supported, place the HTML content on top of the canvas using CSS.
-
-### HTML-in-Canvas polyfills
-
-Use the following polyfill script to mimic the HTML-in-Canvas API in browsers that do not support it.
-
-1. Install or embed the library:
-
-```
-# Install
-npm install three-html-render
-```
-
-```
-# Embed
-<script src="https://cdn.jsdelivr.net/npm/three-html-render/dist/polyfill.js"></script>
-```
-
-2. Run the `installHtmlInCanvasPolyfill()` method to translate HTML-in-Canvas.
+- **Render the content as regular HTML** outside the canvas, or positioned on top of it with CSS, as the example above does. This keeps assistive technology, find-in-page, translation, reading mode, selection, autofill and printing working.
+- **Do not rely on canvas fallback content alone.** Children of a canvas without HTML-in-Canvas support are exposed to assistive technology and can receive focus, but they are not rendered, so sighted users, find-in-page highlights, selection and printing never see them.
+- **Do not count on a polyfill for these features.** The third-party `three-html-render` polyfill (MIT, 0.1.x) emulates the drawing API by moving the canvas children into an offscreen host element and rasterizing them through an SVG `foreignObject` image. Test assistive technology, find-in-page and translation with it before you rely on it; if you use it for the visual effect, pin an exact version (`npm install --save-exact three-html-render@0.1.2`).

@@ -68,6 +68,15 @@
             <script>
                 // Script for Canvas 1 (Accessible)
                 const canvas = document.getElementById('canvas');
+                const supportsHtmlInCanvas = 'requestPaint' in HTMLCanvasElement.prototype;
+
+                if (!supportsHtmlInCanvas) {
+                    // Fallback: without HTML-in-Canvas the canvas children are
+                    // not rendered. Show the content as regular DOM so browser
+                    // features still reach it.
+                    canvas.replaceWith(document.getElementById('content_element'));
+                }
+
                 const ctx = canvas.getContext('2d');
                 const content_element = document.getElementById('content_element');
 
@@ -83,7 +92,9 @@
                     const dpc = entry.devicePixelContentBoxSize;
                     canvas.width = dpc ? dpc[0].inlineSize : Math.round(entry.contentRect.width * window.devicePixelRatio);
                     canvas.height = dpc ? dpc[0].blockSize : Math.round(entry.contentRect.height * window.devicePixelRatio);
-                    canvas.requestPaint();
+                    if (supportsHtmlInCanvas) {
+                        canvas.requestPaint();
+                    }
                 });
                 const supportsDevicePixelContentBox = 
                     typeof ResizeObserverEntry !== 'undefined' && 
