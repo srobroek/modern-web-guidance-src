@@ -45,7 +45,14 @@ dialog::backdrop {
   </form>
 </dialog>
 
-<button onclick="document.getElementById('myDialog').showModal()">Open Dialog</button>
+<button type="button" id="openDialog">Open Dialog</button>
+```
+
+```javascript
+// Attach the handler from script rather than an inline onclick, which a strict CSP blocks.
+document.getElementById('openDialog').addEventListener('click', () => {
+  document.getElementById('myDialog').showModal();
+});
 ```
 
 ## Constraints & Accessibility
@@ -53,14 +60,14 @@ dialog::backdrop {
 - **MANDATORY**: Use `closedby="any"` to enable light-dismiss declaratively.
 - **MANDATORY**: Always open modal dialogs with `showModal()`. This ensures the dialog is in the top layer, focus is trapped, and the `Esc` key is handled.
 - **DO**: Use `aria-labelledby` or `aria-label` to provide an accessible name for the dialog.
-- **DO NOT**: Use `closedby` for non-modal dialogs (opened with `show()`), as they do not have a backdrop and won't trigger light-dismiss.
-- **DO NOT**: Use the `click` event for critical logic that should happen *before* closing; instead, listen for the `close` or `cancel` events.
+- **DO**: Open this pattern with `showModal()`. `closedby` also applies to non-modal dialogs opened with `show()` (`closedby="any"` closes them on a click outside or `Esc`), but they default to `none` and have no `::backdrop`, so the modal pattern is the one users recognize as light dismiss.
+- **DO NOT**: Use the `click` event for critical logic that should happen *before* closing; instead, listen for the `cancel` event (fired for light dismiss, `Esc`, and `requestClose()`; `event.preventDefault()` keeps the dialog open, although browsers can ignore it for an `Esc` press when the page has no recent user activation) or the `close` event.
 
 ## Fallback strategies
 
 {{ BASELINE_STATUS("dialog-closedby") }}
 
-**MANDATORY**: For browsers that do not yet support `closedby`, you **must** implement a fallback for light-dismiss by checking if a click occurred outside the dialog content's boundaries using the following script:
+**MANDATORY**: For browsers that do not yet support `closedby`, you **must** implement a fallback for light-dismiss by checking if a click occurred outside the dialog content's boundaries using the following script. Close with `requestClose()` where it exists (it ships in browsers that lack `closedby`, such as Safari 18.4+): it fires `cancel` first, so the same `cancel` listener that guards native light dismiss can veto the fallback too. `close()` skips `cancel`, so use it only when `requestClose()` is missing.
 
 ```javascript
 const dialog = document.querySelector('dialog');
@@ -84,8 +91,13 @@ if (!('closedBy' in HTMLDialogElement.prototype)) {
 
     if (isDialogContent) return;
 
-    // 3. Since the click was outside the content area (on the backdrop), manually close the dialog.
-    dialog.close();
+    // 3. Since the click was outside the content area (on the backdrop), request a close.
+    // requestClose() fires a cancelable `cancel` event first, like native light dismiss.
+    if (typeof dialog.requestClose === 'function') {
+      dialog.requestClose();
+    } else {
+      dialog.close();
+    }
   });
 }
 ```

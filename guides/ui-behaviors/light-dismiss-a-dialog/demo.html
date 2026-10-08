@@ -69,7 +69,13 @@
           );
           
           if (!isInDialog) {
-            dialog.close();
+            // requestClose() fires a cancelable `cancel` event first, like native light dismiss.
+            // Browsers without closedby can still have it (e.g. Safari 18.4+).
+            if (typeof dialog.requestClose === 'function') {
+              dialog.requestClose();
+            } else {
+              dialog.close();
+            }
           }
         }
       });
