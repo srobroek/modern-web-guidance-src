@@ -167,6 +167,8 @@
         @media (prefers-reduced-motion: reduce) {
           progress.loading-spinner:indeterminate {
             --_used-spinner-duration: 6s;
+            /* Slow the dash animation too; ignored without @property. */
+            animation-duration: var(--_used-spinner-duration), 12s;
           }
         }
       }

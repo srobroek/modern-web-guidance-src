@@ -107,46 +107,54 @@ progress.loading-spinner:indeterminate {
     background-origin: border-box;
   }
 
-  /* ... fallback for background-clip: border-area ... */
+  /* Add the mask-image fallback for background-clip: border-area here
+     (see Fallback strategies). */
 
   /* The dash animation is only included if @property is supported */
   animation:
     progress-spin var(--_used-spinner-duration) linear infinite
     var(--progress-dash-animation, );
+}
 
-  @keyframes progress-spin {
-    to {
-      rotate: 1turn;
-    }
+/* @keyframes can't be nested inside a style rule; declare them at the top level. */
+@keyframes progress-spin {
+  to {
+    rotate: 1turn;
   }
+}
 
-  @keyframes progress-dash {
-    from {
-      --arc-start: 0deg;
-      --arc-end: 3deg;
-    }
-    50% {
-      --arc-start: 100deg;
-      --arc-end: 358deg;
-    }
-    to {
-      --arc-start: 360deg;
-      --arc-end: 363deg;
-    }
+@keyframes progress-dash {
+  from {
+    --arc-start: 0deg;
+    --arc-end: 3deg;
+  }
+  50% {
+    --arc-start: 100deg;
+    --arc-end: 358deg;
+  }
+  to {
+    --arc-start: 360deg;
+    --arc-end: 363deg;
   }
 }
 ```
 
 #### Respecting Motion Preferences
 
-Users with motion sensitivities may find fast-spinning elements disorienting. Always respect the `prefers-reduced-motion` media query. Set the internal `--_used-spinner-duration` property to override the user's `--spinner-duration` value.
+Users with motion sensitivities may find fast-spinning elements disorienting. Always respect the `prefers-reduced-motion` media query. Set the internal `--_used-spinner-duration` property to override the user's `--spinner-duration` value, and slow down the dash animation too.
+
+**MANDATORY:** Use the same selector as the main spinner rule. A lower-specificity selector such as `.loading-spinner` loses to `progress.loading-spinner:indeterminate`, so the override never applies.
 
 ```css
 @media (prefers-reduced-motion: reduce) {
-  .loading-spinner {
+  progress.loading-spinner:indeterminate {
     /* Slow down the animation significantly rather than stopping it entirely,
        so the user still knows that the process is active. */
     --_used-spinner-duration: 6s;
+    /* The dash animation has its own 3s duration, so slow it down as well.
+       When @property is unsupported, only the spin animation is in the list
+       and the extra duration is ignored. */
+    animation-duration: var(--_used-spinner-duration), 12s;
   }
 }
 ```
@@ -163,13 +171,15 @@ For browsers that don't yet support `background-clip: border-area`, fall back to
 
 ```css
 /* Fallback: use mask-image to create the ring */
-@supports not (background-clip: border-area) {
-  --clip-boundary: calc(100% - var(--thickness));
-  mask-image: radial-gradient(
-    farthest-side,
-    transparent var(--clip-boundary),
-    black var(--clip-boundary)
-  );
-  border: 0;
+progress.loading-spinner:indeterminate {
+  @supports not (background-clip: border-area) {
+    --clip-boundary: calc(100% - var(--thickness));
+    mask-image: radial-gradient(
+      farthest-side,
+      transparent var(--clip-boundary),
+      black var(--clip-boundary)
+    );
+    border: 0;
+  }
 }
 ```

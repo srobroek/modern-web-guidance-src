@@ -10,4 +10,4 @@
 - If `@property` is not supported, the dash animation fails gracefully in CSS (no JS required), falling back to a simple rotating ring.
 - The center of the progress ring is transparent or "hollowed out" using `background-clip: border-area`.
 - If `background-clip: border-area` is not supported, fall back to hollowing out the center of the ring with a radial gradient mask. 
-- The spinner respects `prefers-reduced-motion` by significantly slowing down the animation.
+- The spinner respects `prefers-reduced-motion` by significantly slowing down the animation, including the dash animation when it is present. The reduced-motion rule uses a selector at least as specific as the main spinner rule so its override applies.
