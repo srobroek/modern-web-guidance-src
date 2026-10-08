@@ -112,8 +112,7 @@
 │   └── highlight-text-ranges
 ├── image-set
 │   ├── deliver-optimized-decorative-images
-│   ├── deliver-optimized-decorative-images
-│   └── resolution-optimized-pseudo-elements
+│   └── deliver-optimized-decorative-images
 ├── individual-transforms
 │   └── individual-transform-properties
 ├── inert

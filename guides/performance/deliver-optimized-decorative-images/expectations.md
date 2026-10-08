@@ -1,3 +1,4 @@
 - The element has a standard background image or mask image declaration acting as a fallback.
 - The element uses the `image-set()` function for the same property, defined after the fallback.
 - The `image-set()` function includes multiple pixel density descriptors (e.g., `1x` and `2x`).
+- If a `::before` or `::after` pseudo-element inserts the image through the `content` property, it declares a standard `content: url()` fallback before the `content: image-set()` declaration, and the `image-set()` includes multiple pixel density descriptors.
