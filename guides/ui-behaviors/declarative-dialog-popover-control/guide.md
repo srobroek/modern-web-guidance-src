@@ -73,7 +73,7 @@ Unlike popovers, modal dialogs typically use separate buttons for opening and cl
 
 {{ BASELINE_STATUS("invoker-commands") }}
 
-Because Invoker Commands and Popovers are not yet universally supported, you MUST use polyfills as fallbacks for older browsers.
+Because Invoker Commands and Popovers are not yet universally supported, you MUST provide a fallback for older browsers: load the polyfills below, or map the built-in commands by hand.
 
 ### Polyfilling Invoker Commands
 
@@ -107,6 +107,34 @@ For projects without a bundler, dynamically import the polyfill directly from a 
 **Invokers Polyfill Limitations**
 MANDATORY: This polyfill does not handle the ARIA states (e.g., `aria-expanded`) of the command button the way native browsers do. You are strongly encouraged to handle these states yourself to ensure your site is fully accessible.
 
-{{ INCLUDE("../custom-button-actions/guide.md#fallback-strategies") }}
+### Manual fallback for built-in commands
+
+If you prefer not to load the polyfill, map each built-in command to the dialog or popover method it invokes. Install the listener **only** when native support is missing, otherwise each click runs the command twice (natively and again from the listener), and a toggle undoes itself. Like the polyfill, this does not expose `aria-expanded` on the button; set it yourself if the button controls a popover.
+
+```javascript
+if (!('commandForElement' in HTMLButtonElement.prototype)) {
+  // Use show/hide with a state check rather than togglePopover(force):
+  // Firefox 125-140 support popovers but ignore the force argument.
+  // With the popover polyfill, test the .\:popover-open class instead.
+  const isOpenPopover = (el) => el.matches(':popover-open');
+  const builtInCommands = {
+    'show-modal': (el) => { if (!el.open) el.showModal(); },
+    'close': (el) => { if (el.open) el.close(); },
+    'toggle-popover': (el) => (isOpenPopover(el) ? el.hidePopover() : el.showPopover()),
+    'show-popover': (el) => { if (!isOpenPopover(el)) el.showPopover(); },
+    'hide-popover': (el) => { if (isOpenPopover(el)) el.hidePopover(); },
+  };
+
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('button[commandfor][command]');
+    if (!button) return;
+
+    const target = document.getElementById(button.getAttribute('commandfor'));
+    // Built-in command values are matched case-insensitively.
+    const run = builtInCommands[button.getAttribute('command').toLowerCase()];
+    if (target && run) run(target);
+  });
+}
+```
 
 {{ FEATURE_FALLBACKS("popover") }}
