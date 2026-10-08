@@ -15,24 +15,38 @@ no `"tabs"` permission. Use `desktopCapture` only when the user must select what
 ### Permissions
 
 ```json
-{ "permissions": ["tabCapture"] }
+{ "permissions": ["tabCapture", "offscreen"] }
 ```
 
 ### Pattern
 
 `chrome.tabCapture.getMediaStreamId()` runs in the **service worker** and returns a stream ID.
 The actual `getUserMedia()` call must happen in an **offscreen document** (the SW cannot access
-media streams directly).
+media streams directly), so create that document before messaging it:
 
 ```js
 // service-worker.js
+async function ensureOffscreenDocument() {
+  const existing = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+    documentUrls: [chrome.runtime.getURL('offscreen.html')]
+  });
+  if (existing.length > 0) return;
+  await chrome.offscreen.createDocument({
+    url: 'offscreen.html',
+    reasons: ['USER_MEDIA'],
+    justification: 'Record the current tab with MediaRecorder'
+  });
+}
+
 chrome.action.onClicked.addListener(async (tab) => {
   const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+  await ensureOffscreenDocument();
   // Pass the ID to the offscreen document to call getUserMedia
   await chrome.runtime.sendMessage({ type: 'START_CAPTURE', streamId });
 });
 
-// offscreen.js
+// offscreen.js (loaded by offscreen.html)
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type !== 'START_CAPTURE') return;
   (async () => {
@@ -46,6 +60,9 @@ chrome.runtime.onMessage.addListener((msg) => {
 });
 ```
 
+Call this from the admission guard in [State Locking](#state-locking--prevent-double-start-errors)
+so a second click cannot race the first one into `createDocument()`.
+
 ## Desktop Capture
 
 ### Permissions
@@ -54,8 +71,9 @@ chrome.runtime.onMessage.addListener((msg) => {
 { "permissions": ["tabs", "desktopCapture"] }
 ```
 
-`"tabs"` is **required** — `chooseDesktopMedia` needs a `targetTab` with its `url` field
-populated, which requires the `"tabs"` permission.
+`chooseDesktopMedia` needs a `targetTab` with its `url` field populated. Declare `"tabs"`, or use
+`"activeTab"` when the call follows an action click: the click grants access to that tab, so the
+`tab` passed to `action.onClicked` has its `url`.
 
 ### Pattern
 
@@ -80,38 +98,42 @@ Both APIs fail if called while a previous capture is still active:
 - `tabCapture`: `"Cannot capture a tab with an active stream"`
 - `desktopCapture`: opens a second chooser dialog on top of the first
 
-Use a state machine stored in `chrome.storage.session` (survives service worker restarts,
-cleared on browser close):
+Reading the state with `await chrome.storage.session.get()` and writing it afterwards is not a
+lock: two fast clicks both read `'idle'` before either writes. Admit one transition at a time with
+a synchronous in-memory flag, and keep the committed state in `chrome.storage.session` (survives
+service worker restarts, cleared on browser close):
 
 ```js
-// State: 'idle' → 'starting' → 'recording' → 'stopping' → 'idle'
+let transitionInFlight = false; // serializes clicks within one service worker instance
+
 chrome.action.onClicked.addListener(async (tab) => {
-  const { recordingState = 'idle' } = await chrome.storage.session.get('recordingState');
-
-  // Ignore clicks during transitions
-  if (recordingState === 'starting' || recordingState === 'stopping') return;
-
-  if (recordingState === 'idle') {
-    await chrome.storage.session.set({ recordingState: 'starting' });
-    try {
+  if (transitionInFlight) return; // checked and set before the first await
+  transitionInFlight = true;
+  try {
+    const { recordingState = 'idle' } = await chrome.storage.session.get('recordingState');
+    if (recordingState === 'idle') {
       await startRecording(tab);
       await chrome.storage.session.set({ recordingState: 'recording' });
       await chrome.action.setBadgeText({ text: 'REC' });
       await chrome.action.setBadgeBackgroundColor({ color: '#FF0000' });
-    } catch (err) {
-      console.error('Failed to start recording:', err);
-      await chrome.storage.session.set({ recordingState: 'idle' });
+    } else {
+      try { await stopRecording(); }
+      finally {
+        await chrome.storage.session.set({ recordingState: 'idle' });
+        await chrome.action.setBadgeText({ text: '' });
+      }
     }
-  } else if (recordingState === 'recording') {
-    await chrome.storage.session.set({ recordingState: 'stopping' });
-    try { await stopRecording(); }
-    finally {
-      await chrome.storage.session.set({ recordingState: 'idle' });
-      await chrome.action.setBadgeText({ text: '' });
-    }
+  } catch (err) {
+    console.error('Recording transition failed:', err);
+  } finally {
+    transitionInFlight = false;
   }
 });
 ```
+
+The flag resets if the service worker restarts, so treat the stored state as a claim to verify:
+if it says `'recording'` but no offscreen document exists (`chrome.runtime.getContexts()`), the
+capture ended — reset it to `'idle'`.
 
 This same pattern applies to `chrome.offscreen.createDocument` (only one offscreen document
 is allowed at a time) and any other API that manages an exclusive resource.

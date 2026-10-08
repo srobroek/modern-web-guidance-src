@@ -8,7 +8,7 @@ If generating real icon files is impractical, **omit `icons` and `default_icon` 
 
 ```python
 # generate_icons.py
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import os
 
 os.makedirs('icons', exist_ok=True)
@@ -22,9 +22,9 @@ for size in [16, 48, 128]:
         radius=size // 4,
         fill='#4688F1'
     )
-    # Add a letter
-    font_size = size // 2
-    draw.text((size // 2, size // 2), 'E', fill='white', anchor='mm')
+    # Add a letter (load_default(size=...) needs Pillow 10.1+ with FreeType)
+    font = ImageFont.load_default(size=size // 2)
+    draw.text((size // 2, size // 2), 'E', fill='white', anchor='mm', font=font)
     img.save(f'icons/icon-{size}.png')
     print(f'Created icons/icon-{size}.png ({size}x{size})')
 ```
@@ -61,9 +61,10 @@ for (const size of [16, 48, 128]) {
 }
 ```
 
-## Generate with pure SVG (no dependencies)
+## Draw as SVG, then convert to PNG
 
-Create SVGs and use them directly (Chrome supports SVG icons in some contexts) or convert:
+Manifest and action icons must be raster files (PNG recommended; BMP, GIF, ICO, and JPEG also
+work). Chrome does not support SVG or WebP icons, so convert every SVG before referencing it:
 
 ```bash
 for SIZE in 16 48 128; do
@@ -74,10 +75,12 @@ for SIZE in 16 48 128; do
         fill="white" font-family="sans-serif" font-weight="bold" font-size="$((SIZE/2))">E</text>
 </svg>
 EOF
+  rsvg-convert -w "$SIZE" -h "$SIZE" "icons/icon-${SIZE}.svg" -o "icons/icon-${SIZE}.png"
 done
 ```
 
-Note: For Chrome Web Store submission, PNG is required. SVG works for development.
+`rsvg-convert` ships with librsvg; any SVG rasterizer works. Reference only the `.png` files in
+manifest.json.
 
 ## Manifest reference
 

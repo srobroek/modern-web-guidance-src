@@ -26,8 +26,8 @@ feature where the user supplies JavaScript that should run on web pages.
 
 ## User Enablement — CRITICAL
 
-**The `chrome.userScripts` API requires explicit user opt-in. Without it, the API throws on
-property access.** Behavior differs by Chrome version:
+**The `chrome.userScripts` API requires explicit user opt-in. Without it, the namespace may be
+`undefined`, or defined but with every method throwing.** Behavior differs by Chrome version:
 
 | Chrome version | Requirement |
 |----------------|-------------|
@@ -39,20 +39,23 @@ property access.** Behavior differs by Chrome version:
 await chrome.userScripts.register([{ id: 'foo', matches: [...], js: [...] }]);
 // TypeError: Cannot read properties of undefined
 
-// ✅ CORRECT — always guard before any chrome.userScripts.* call
+// ✅ CORRECT — the check Chrome documents: call a method that always succeeds when the API is
+// enabled. Reading the `chrome.userScripts` property alone does not throw when it is undefined,
+// and does not catch the "defined but disabled" case.
 function isUserScriptsAvailable() {
   try {
-    chrome.userScripts; // throws if not enabled
+    chrome.userScripts.getScripts(); // throws if the permission or toggle is not enabled
     return true;
   } catch {
     return false;
   }
 }
 
-if (!isUserScriptsAvailable()) {
+if (isUserScriptsAvailable()) {
+  initScriptManager();
+} else {
   document.getElementById('warning').style.display = 'block';
   document.getElementById('main-ui').style.display = 'none';
-  return;
 }
 ```
 
@@ -142,7 +145,12 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   if (reason === chrome.runtime.OnInstalledReason.UPDATE) {
     const { scripts = {} } = await chrome.storage.local.get('scripts');
     for (const s of Object.values(scripts)) {
-      await chrome.userScripts.register([s]).catch(() => {});
+      try {
+        await chrome.userScripts.register([s]);
+      } catch (err) {
+        // Do not swallow this: a script the user saved would silently stop running.
+        console.error(`Could not restore user script "${s.id}":`, err);
+      }
     }
   }
 });

@@ -16,18 +16,21 @@ These are separate manifest keys — don't conflate them:
 
 Scope `host_permissions` to specific domains rather than `<all_urls>` unless the extension genuinely needs to run on every site — broad host permissions draw extra Chrome Web Store review scrutiny.
 
-## `tab.url` requires the `tabs` permission
+## `tab.url` and `tab.title` need tab access
 
-Without it, `tab.url` and `tab.title` silently return `undefined` — no error thrown.
+`tab.url`, `tab.pendingUrl`, `tab.title`, and `tab.favIconUrl` are populated only for tabs the
+extension can access: with the `tabs` permission (any tab), a host permission matching the tab, or
+an `activeTab` grant for it. Otherwise they silently return `undefined` — no error thrown.
 
 ```js
-// manifest.json — REQUIRED if you read tab.url or tab.title anywhere:
+// manifest.json — only needed to read these fields on tabs you have no host access to,
+// e.g. listing every open tab's URL. It adds a "Read your browsing history" install warning.
 { "permissions": ["tabs"] }
 ```
 
 See `references/extensions/tab-management.md` for the full tabs/windows API.
 
-## `activeTab` only works on direct user gestures — not from side panels
+## `activeTab` comes from invoking the extension — not from clicks inside its pages
 
 `activeTab` grants temporary access to the current tab ONLY when triggered by:
 - Clicking the extension action icon
@@ -35,18 +38,25 @@ See `references/extensions/tab-management.md` for the full tabs/windows API.
 - A keyboard shortcut from the `commands` API
 - Accepting an omnibox suggestion
 
-It does **NOT** grant access when clicking a button in a side panel, a popup button that opens
-later, or any programmatic trigger.
+It does **NOT** create a grant when the user clicks a button in a side panel or popup, or on any
+programmatic trigger. A grant that already exists (for example, from the action click that opened
+the popup) keeps working for that tab until the user navigates to another site or closes it.
 
 ```js
-// ❌ BROKEN — activeTab does NOT work from a side panel button click
+// ❌ BROKEN — a side panel click grants nothing: this fails on every tab that has no existing
+// activeTab grant or matching host permission
 document.getElementById('summarize').addEventListener('click', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => document.body.innerText });
 });
 
-// ✅ FIX — use "tabs" permission + specific host_permissions instead
-// manifest.json: { "permissions": ["tabs", "scripting"], "host_permissions": ["<all_urls>"] }
+// ✅ FIX — declare host access for only the sites the panel works on, and request more at runtime
+// if the user opts in. Host access also exposes tab.url/title, so "tabs" is not needed.
+// manifest.json: {
+//   "permissions": ["scripting", "sidePanel"],
+//   "host_permissions": ["https://docs.example.com/*"],
+//   "optional_host_permissions": ["https://*/*"]
+// }
 ```
 
 See `references/extensions/side-panel.md` for the side-panel-specific writeup.

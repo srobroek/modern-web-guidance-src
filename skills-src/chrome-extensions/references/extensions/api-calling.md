@@ -6,9 +6,11 @@ Ordinarily, fetch requests made by extensions follow normal CORS rules.
 
 To determine if this is sufficient, use `curl` to call the API with a test origin. For example:
 
+```sh
+curl -I -H "Origin: https://example.com" "https://api.openweathermap.org/data/2.5/weather?q=London&appid=KEY"
 ```
-curl -H "Origin: https://example.com" -I https://api.openweathermap.org/data/2.5/weather?q=London&appid=KEY`
-```
+
+Quote the URL: an unquoted `&` makes the shell run `curl` in the background and drop the rest of the query string.
 
 If the response includes either `*` or `https://example.com` as the value for the `Access-Control-Allow-Origin` header, the API supports CORS.
 
@@ -67,6 +69,10 @@ async function callAPI(url) {
 
 ## Service Worker Considerations
 
-If making API calls from the service worker, remember it can terminate. For long-polling or
-webhook-style patterns, use `chrome.offscreen` to create an offscreen document that stays alive,
-or use `chrome.alarms` for periodic polling.
+If making API calls from the service worker, remember it can terminate after 30 seconds without
+events or extension API calls, and a `fetch()` response that takes longer than 30 seconds to
+arrive also ends it. Use `chrome.alarms` for periodic polling (minimum period 30 seconds). Do not
+create an offscreen document just to keep code running: `chrome.offscreen.createDocument()`
+requires a reason such as `DOM_PARSER` or `AUDIO_PLAYBACK`, and keep-alive is not one. For a
+server push channel, an active WebSocket in the service worker (Chrome 116+) resets the idle timer
+each time a message is sent or received.

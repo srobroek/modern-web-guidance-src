@@ -41,8 +41,9 @@ const session = await LanguageModel.create({
 ## Complete extension example: page summarizer
 
 A full wiring example showing manifest + service worker + side panel together.
-Note the use of `tabs` + `host_permissions` instead of `activeTab` — side panel button
-clicks do NOT activate `activeTab` (see Rule 12).
+A side panel button click does NOT grant `activeTab` (see Rule 12), so a summarizer that works on
+any page declares host access to all sites. Host access also populates `tab.url`, so `tabs` is not
+needed.
 
 ### manifest.json
 ```json
@@ -50,7 +51,7 @@ clicks do NOT activate `activeTab` (see Rule 12).
   "manifest_version": 3,
   "name": "AI Page Summarizer",
   "version": "1.0",
-  "permissions": ["sidePanel", "tabs", "scripting"],
+  "permissions": ["sidePanel", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "service-worker.js" },
   "side_panel": { "default_path": "sidepanel/sidepanel.html" },
@@ -69,49 +70,64 @@ chrome.action.onClicked.addListener(async (tab) => {
 ```js
 const statusEl = document.getElementById('status');
 const summaryEl = document.getElementById('summary');
+const summarizeButton = document.getElementById('summarize');
+let busy = false;
 
-document.getElementById('summarize').addEventListener('click', async () => {
-  if (!globalThis.LanguageModel) {
-    statusEl.textContent = 'Prompt API not available in this browser.';
-    return;
-  }
-
-  const availability = await LanguageModel.availability({
-    expectedInputs: [{ type: "text", languages: ["en"] }],
-    expectedOutputs: [{ type: "text", languages: ["en"] }]
-  });
-  if (availability === 'unavailable') {
-    statusEl.textContent = 'AI model not available on this device.';
-    return;
-  }
-
-  // Requires "tabs" + "host_permissions" — activeTab does NOT work from a side panel button
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const [{ result: pageText }] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: () => {
-      const body = document.body.cloneNode(true);
-      body.querySelectorAll('script, style, nav, footer, header').forEach(el => el.remove());
-      return body.innerText.substring(0, 4000);
+summarizeButton.addEventListener('click', async () => {
+  if (busy) return; // a second click would interleave chunks from two streams
+  busy = true;
+  summarizeButton.disabled = true;
+  let session;
+  try {
+    if (!globalThis.LanguageModel) {
+      statusEl.textContent = 'Prompt API not available in this browser.';
+      return;
     }
-  });
 
-  const session = await LanguageModel.create({
-    expectedInputs: [{ type: "text", languages: ["en"] }],
-    expectedOutputs: [{ type: "text", languages: ["en"] }],
-    initialPrompts: [{ role: 'system', content: 'Summarize web page content in 3-5 bullet points.' }],
-    monitor(m) {
-      m.addEventListener('downloadprogress', (e) => {
-        const pct = e.total ? Math.floor((e.loaded / e.total) * 100) : 0;
-        statusEl.textContent = `Downloading model: ${pct}%`;
-      });
+    const availability = await LanguageModel.availability({
+      expectedInputs: [{ type: "text", languages: ["en"] }],
+      expectedOutputs: [{ type: "text", languages: ["en"] }]
+    });
+    if (availability === 'unavailable') {
+      statusEl.textContent = 'AI model not available on this device.';
+      return;
     }
-  });
 
-  summaryEl.textContent = '';
-  for await (const chunk of session.promptStreaming(`Summarize:\n\n${pageText}`)) {
-    summaryEl.textContent += chunk; // APPEND — do not replace
+    // Uses the "<all_urls>" host permission — activeTab does NOT come from a side panel click
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [{ result: pageText }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const body = document.body.cloneNode(true);
+        body.querySelectorAll('script, style, nav, footer, header').forEach(el => el.remove());
+        return body.innerText.substring(0, 4000);
+      }
+    });
+
+    session = await LanguageModel.create({
+      expectedInputs: [{ type: "text", languages: ["en"] }],
+      expectedOutputs: [{ type: "text", languages: ["en"] }],
+      initialPrompts: [{ role: 'system', content: 'Summarize web page content in 3-5 bullet points.' }],
+      monitor(m) {
+        m.addEventListener('downloadprogress', (e) => {
+          const pct = e.total ? Math.floor((e.loaded / e.total) * 100) : 0;
+          statusEl.textContent = `Downloading model: ${pct}%`;
+        });
+      }
+    });
+
+    statusEl.textContent = '';
+    summaryEl.textContent = '';
+    for await (const chunk of session.promptStreaming(`Summarize:\n\n${pageText}`)) {
+      summaryEl.textContent += chunk; // APPEND — do not replace
+    }
+  } catch (err) {
+    // Restricted pages (chrome://, the Web Store) reject executeScript; prompts can fail too.
+    statusEl.textContent = `Could not summarize this page: ${err.message}`;
+  } finally {
+    session?.destroy(); // free the model session even when the stream fails
+    busy = false;
+    summarizeButton.disabled = false;
   }
-  session.destroy();
 });
 ```

@@ -7,7 +7,7 @@ persistent background pages, you CANNOT rely on in-memory state.
 
 ## Rules
 
-1. **Never store state in global variables** — treat every event handler as if the SW just started
+1. **Never store state in global variables** — treat every event handler as if the SW just started (in-flight coordination such as the update queue below is fine; it is never the source of truth)
 2. **Use chrome.storage for all persistent state** — read on demand, write after changes
 3. **Use chrome.alarms for timers** — not setTimeout/setInterval (these die with the SW)
 4. **Use chrome.storage.session for ephemeral session state** — survives SW restart but not browser restart
@@ -31,13 +31,22 @@ chrome.webNavigation.onCompleted.addListener(() => {
   chrome.action.setBadgeText({ text: String(count) });
 });
 
-// ✅ GOOD: State in storage
-chrome.webNavigation.onCompleted.addListener(async (details) => {
+// ✅ GOOD: State in storage, with read-modify-write updates serialized. Overlapping events
+// would otherwise both read the same count across the await and lose an increment.
+let storageQueue = Promise.resolve();
+function updateStorage(update) {
+  const run = storageQueue.then(update);
+  storageQueue = run.catch(() => {}); // keep the queue usable after a failed update
+  return run;
+}
+
+chrome.webNavigation.onCompleted.addListener((details) => {
   if (details.frameId !== 0) return; // Main frame only
-  const data = await chrome.storage.local.get({ visitCount: 0 });
-  data.visitCount++;
-  await chrome.storage.local.set(data);
-  chrome.action.setBadgeText({ text: String(data.visitCount) });
+  return updateStorage(async () => {
+    const { visitCount } = await chrome.storage.local.get({ visitCount: 0 });
+    await chrome.storage.local.set({ visitCount: visitCount + 1 });
+    await chrome.action.setBadgeText({ text: String(visitCount + 1) });
+  });
 });
 ```
 
@@ -66,7 +75,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     await chrome.storage.local.set({ settings: defaultSettings });
   }
-  // Context menus must be re-created (they persist, but re-creating is idempotent)
+  // Menus persist across SW restarts, and create() with an existing id fails with
+  // "Cannot create item with duplicate id" — so create them here, not at every SW start.
   chrome.contextMenus.create({
     id: 'myItem',
     title: 'My Context Menu Item',
@@ -77,17 +87,23 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 ## Pattern: Keeping the SW Alive (When Necessary)
 
-Occasionally you need the SW alive for a long-running operation. Use one of:
+Chrome stops an idle SW after 30 seconds without events or extension API calls. Occasionally you
+need it alive for a long-running operation. Use one of:
 
-1. **chrome.offscreen** — create an offscreen document for long tasks
-2. **Periodic storage writes** — each chrome.storage call resets the idle timer
-3. **Active port connections** — an open port keeps the SW alive
+1. **Extension API calls or events** — each one resets the idle timer
+2. **Long-lived port messages** — since Chrome 114, sending a message over a port keeps the SW
+   alive; merely holding a port open does NOT
+3. **WebSocket traffic** — since Chrome 116, sending or receiving WebSocket messages resets the timer
 
 ```js
-// Port-based keepalive from popup/side panel
+// Port-based keepalive from popup/side panel: the SW stays alive only while messages flow
 const port = chrome.runtime.connect({ name: 'keepalive' });
-// The SW stays alive as long as this port is open
+const keepAlive = setInterval(() => port.postMessage({ type: 'ping' }), 20_000);
+port.onDisconnect.addListener(() => clearInterval(keepAlive));
 ```
+
+Do not create an offscreen document only to keep code running: `chrome.offscreen.createDocument()`
+requires a reason such as `DOM_PARSER` or `AUDIO_PLAYBACK`, and keep-alive is not one.
 
 ⚠️ Do NOT abuse keepalive patterns. Chrome may enforce stricter limits in future versions.
 
@@ -131,18 +147,14 @@ function getToday() {
   return new Date().toISOString().split('T')[0]; // "2025-01-15"
 }
 
-async function incrementDailyCount() {
-  const { dailyCount = 0, countDate = '' } = await chrome.storage.local.get(['dailyCount', 'countDate']);
-  const today = getToday();
-
-  if (countDate !== today) {
-    // New day — reset
-    await chrome.storage.local.set({ dailyCount: 1, countDate: today });
-    return 1;
-  } else {
-    const newCount = dailyCount + 1;
-    await chrome.storage.local.set({ dailyCount: newCount });
+// Run through updateStorage() (above) so two events on the same day cannot both read the same count.
+function incrementDailyCount() {
+  return updateStorage(async () => {
+    const { dailyCount = 0, countDate = '' } = await chrome.storage.local.get(['dailyCount', 'countDate']);
+    const today = getToday();
+    const newCount = countDate === today ? dailyCount + 1 : 1; // new day — reset
+    await chrome.storage.local.set({ dailyCount: newCount, countDate: today });
     return newCount;
-  }
+  });
 }
 ```

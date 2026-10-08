@@ -53,9 +53,9 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 If the extension has both a popup AND side panel, add a button in the popup that calls `chrome.sidePanel.open()`. Alternatively, use `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` — but the property is `openPanelOnActionClick`, NOT `openPanelOnActionIconClick`; the "Icon" variant causes a synchronous TypeError that silently aborts the service worker. Do NOT also define `default_popup` when using `setPanelBehavior`. See `references/extensions/side-panel.md`.
 
-#### 3. Code execution: sandboxed iframes ONLY
+#### 3. Code execution: manifest-declared sandbox pages ONLY
 
-Extension CSP blocks `eval()`, `new Function()`, inline `<script>` in all extension pages.
+Extension CSP blocks `eval()`, `new Function()`, inline `<script>` in all extension pages. `blob:` and `srcdoc` iframes do NOT escape it: both inherit the creating page's CSP, so their scripts stay blocked.
 
 ```js
 // ❌ BROKEN — direct iframe DOM access throws SecurityError
@@ -64,24 +64,26 @@ iframe.contentDocument.write(html);
 // ❌ BROKEN — eval in extension page
 eval(userCode); // CSP blocks this
 
-// ✅ OPTION A: Sandbox in manifest + postMessage
+// ❌ BROKEN — blob: and srcdoc documents inherit the extension page's CSP
+iframe.src = URL.createObjectURL(new Blob([doc], { type: 'text/html' }));
+iframe.srcdoc = `<script>${js}<\/script>`;
+
+// ✅ CORRECT — sandbox page in manifest + postMessage
 // manifest.json: { "sandbox": { "pages": ["sandbox.html"] } }
 iframe.contentWindow.postMessage({ html, css, js }, '*');
-// sandbox.html receives and runs:
-window.addEventListener('message', (e) => { eval(e.data.js); /* allowed in sandbox */ });
-
-// ✅ OPTION B: Blob URL (creates separate origin, bypasses extension CSP)
-iframe.src = URL.createObjectURL(new Blob([doc], { type: 'text/html' }));
-
-// ✅ OPTION C: srcdoc
-iframe.srcdoc = `<style>${css}</style>${html}<script>${js}<\/script>`;
+// sandbox.html runs in a unique origin with its own CSP, so eval is allowed there.
+// Only accept messages from the embedding extension page:
+window.addEventListener('message', (e) => {
+  if (e.source !== window.parent) return;
+  eval(e.data.js);
+});
 ```
 
 See `references/extensions/csp-sandbox.md` for full details.
 
-#### 4. `tab.url` requires the `tabs` permission
+#### 4. `tab.url` and `tab.title` need tab access
 
-Without it, `tab.url` silently returns `undefined` — no error thrown. See
+`tab.url`, `tab.pendingUrl`, `tab.title`, and `tab.favIconUrl` are populated only when the extension has the `tabs` permission, a host permission matching the tab, or an `activeTab` grant for it. Otherwise they are `undefined` — no error thrown. Request `tabs` only when you must read these fields for tabs you have no host access to. See
 `references/extensions/permissions.md`.
 
 #### 5. Always use async/await — never `.then()` chains
@@ -150,16 +152,16 @@ Use `chrome.alarms` instead of `setTimeout`/`setInterval`. See `references/exten
 
 When using Google sign-in, the OAuth client_id is tied to a specific extension ID. The ID changes between unpacked development and the Chrome Web Store.
 
-To stabilize the ID during development, add a `"key"` field to manifest.json:
-1. Pack the extension once (chrome://extensions → Pack)
-2. Extract the public key from the .crx
+To keep one ID across development and the store, add the store item's public key as the `"key"` field in manifest.json:
+1. Upload the zipped extension in the Chrome Developer Dashboard without publishing it
+2. On the item's **Package** tab, click **View public key** and copy the key as one line
 3. Add `"key": "MIIBIjANBgkqh..."` to manifest.json
 
-Always document: "After publishing to the Chrome Web Store, update the OAuth client with the store-assigned extension ID." See `references/extensions/auth-identity.md`.
+If the manifest does not carry that key, document: "After publishing to the Chrome Web Store, update the OAuth client with the store-assigned extension ID." See `references/extensions/auth-identity.md`.
 
 #### 9. Context menus: show user feedback after action
 
-When a context menu item performs an action (save, copy, etc.), confirm it to the user. Use a notification, badge flash, or injected toast — don't let actions happen silently. See `references/extensions/context-menus.md` for a complete toast implementation.
+When a context menu item performs an action (save, copy, etc.), confirm it to the user. Use a notification, badge flash, or injected toast — don't let actions happen silently. See `references/extensions/context-menus.md` for a badge-flash example and when to use the alternatives.
 
 #### 10. Prompt API: available in service workers, popup, and side panel
 
@@ -188,12 +190,14 @@ await chrome.action.setBadgeText({ text: '5' });
 { "action": { "default_popup": "popup/popup.html" } }
 ```
 
-#### 12. `activeTab` only works on direct user gestures — not from side panels
+#### 12. `activeTab` comes from invoking the extension — not from clicks inside its pages
 
-`activeTab` grants temporary access to the current tab ONLY on a direct user gesture (action
-icon click, context menu item, keyboard shortcut, omnibox suggestion) — NOT from a button click
-inside a side panel or popup. Use `tabs` + `host_permissions` instead. See
-`references/extensions/permissions.md` and `references/extensions/side-panel.md`.
+`activeTab` grants temporary access to the current tab only when the user invokes the extension
+(action click, context menu item, keyboard shortcut, omnibox suggestion). A button click inside a
+side panel or popup does NOT create a new grant. An existing grant (for example, from the action
+click that opened a popup) still covers that tab until the user navigates to another site. When
+the panel must act on tabs it has no grant for, request `host_permissions` for only the sites it
+needs. See `references/extensions/permissions.md` and `references/extensions/side-panel.md`.
 
 #### 13. DevTools panel URLs are relative to the extension root
 
@@ -253,11 +257,12 @@ chrome.notifications.create('reminder', { type: 'basic', iconUrl, title: 'Remind
 This applies to ALL image references in chrome.* APIs — notifications, `chrome.action.setIcon`,
 context menu icons, etc. **If you reference a file, it must exist.**
 
-#### 16. Tab capture: guard against double-start with state locking
+#### 16. Tab capture: guard against double-start with synchronous admission
 
 `chrome.tabCapture.getMediaStreamId()` fails with `"Cannot capture a tab with an active stream"`
 if called while a previous capture is still active. Fast double-clicks on the extension icon
-easily trigger this. Use explicit state locking:
+easily trigger this. A guard that reads state with `await` and writes it later is NOT a lock: both
+clicks read `'idle'` before either writes. Claim the transition synchronously, then persist it:
 
 ```js
 // ❌ BROKEN — no guard against rapid clicks
@@ -267,45 +272,57 @@ chrome.action.onClicked.addListener(async (tab) => {
   else { isRecording = true; startRecording(tab); } // Second click = "active stream" error
 });
 
-// ✅ CORRECT — use transitional states to lock out concurrent operations
-// State machine: 'idle' → 'starting' → 'recording' → 'stopping' → 'idle'
-// Store state in chrome.storage.session (survives SW restart, cleared on browser close)
+// ❌ BROKEN — check-then-set across an await: two fast clicks both see 'idle'
 chrome.action.onClicked.addListener(async (tab) => {
   const { recordingState = 'idle' } = await chrome.storage.session.get('recordingState');
-
-  if (recordingState === 'starting' || recordingState === 'stopping') return;
-
   if (recordingState === 'idle') {
-    await chrome.storage.session.set({ recordingState: 'starting' });
-    try {
+    await chrome.storage.session.set({ recordingState: 'starting' }); // too late
+    await startRecording(tab);
+  }
+});
+
+// ✅ CORRECT — admit one transition at a time with a synchronous in-memory flag.
+// The flag only serializes events inside one service worker instance; the committed state
+// lives in chrome.storage.session (survives SW restart, cleared on browser close).
+let transitionInFlight = false;
+
+chrome.action.onClicked.addListener(async (tab) => {
+  if (transitionInFlight) return; // checked and set before the first await
+  transitionInFlight = true;
+  try {
+    const { recordingState = 'idle' } = await chrome.storage.session.get('recordingState');
+    if (recordingState === 'idle') {
       await startRecording(tab);
       await chrome.storage.session.set({ recordingState: 'recording' });
       await chrome.action.setBadgeText({ text: 'REC' });
       await chrome.action.setBadgeBackgroundColor({ color: '#FF0000' });
-    } catch (err) {
-      console.error('Failed to start recording:', err);
-      await chrome.storage.session.set({ recordingState: 'idle' });
+    } else {
+      try { await stopRecording(); }
+      finally {
+        await chrome.storage.session.set({ recordingState: 'idle' });
+        await chrome.action.setBadgeText({ text: '' });
+      }
     }
-  } else if (recordingState === 'recording') {
-    await chrome.storage.session.set({ recordingState: 'stopping' });
-    try { await stopRecording(); }
-    finally {
-      await chrome.storage.session.set({ recordingState: 'idle' });
-      await chrome.action.setBadgeText({ text: '' });
-    }
+  } catch (err) {
+    console.error('Recording transition failed:', err);
+  } finally {
+    transitionInFlight = false;
   }
 });
 ```
 
-This pattern applies to any chrome API that manages exclusive resources:
-`chrome.tabCapture`, `chrome.desktopCapture`, `chrome.offscreen.createDocument` (only one
-offscreen document allowed at a time). See `references/extensions/media-capture.md`.
+After a service worker restart, reconcile the stored state with reality before trusting it (for
+example, `'recording'` with no offscreen document left means the capture ended). This pattern
+applies to any chrome API that manages exclusive resources: `chrome.tabCapture`,
+`chrome.desktopCapture`, `chrome.offscreen.createDocument` (only one offscreen document allowed at
+a time). See `references/extensions/media-capture.md`.
 
 #### 17. `chrome.desktopCapture` requires a target tab with URL access
 
 When calling `chrome.desktopCapture.chooseDesktopMedia()` from a service worker, you must pass
 the active tab as the `targetTab` parameter. The tab object must have its `url` field populated,
-which requires the `"tabs"` permission.
+which requires the `"tabs"` permission, a host permission matching the tab, or an `activeTab`
+grant for it.
 
 ```js
 // ❌ BROKEN — called without targetTab from service worker
@@ -332,7 +349,7 @@ chrome.desktopCapture.chooseDesktopMedia(['screen', 'window'], tab, (streamId) =
 `chrome.userScripts` runs **user-provided code** at runtime. Use it for script managers and
 user automation — not for extension-bundled scripts.
 
-- **API throws on property access if not enabled.** Chrome 138+ requires the user to toggle "Allow User Scripts" on the extension's details page; Chrome < 138 requires Developer mode. Always call `isUserScriptsAvailable()` before any `chrome.userScripts.*` call and show an error UI when it returns false.
+- **API is unusable until the user enables it.** Chrome 138+ requires the user to toggle "Allow User Scripts" on the extension's details page; Chrome < 138 requires Developer mode. Until then `chrome.userScripts` may be `undefined`, or defined with every method throwing. Always call `isUserScriptsAvailable()` (it calls `chrome.userScripts.getScripts()` inside `try`) before any `chrome.userScripts.*` call and show an error UI when it returns false.
 - **Registered scripts are cleared on extension update.** Persist configs in `chrome.storage`; re-register them in `runtime.onInstalled` for the `"update"` reason.
 - **Messaging requires explicit opt-in.** Call `configureWorld({ messaging: true })` first; listen on `runtime.onUserScriptMessage`, not `runtime.onMessage`.
 - **`ScriptSource` constraint:** each `js` entry must have exactly one of `code` or `file`. **`id` constraint:** cannot start with `_`.
@@ -385,17 +402,17 @@ readiness for a Chrome extension project.
 
 ### Core Workflow
 
-Every time you touch a Chrome extension project in a way that affects its store presence,
-update (or create) `CHROMEWEBSTORE.md` in the project root. The file tracks everything the
-developer needs to fill out in the Chrome Developer Dashboard, so they can copy-paste from
-a single doc instead of scrambling at publish time.
+When the user is publishing or preparing to publish an extension, or the project already has a
+`CHROMEWEBSTORE.md` in its root, keep that file up to date. It tracks everything the developer
+needs to fill out in the Chrome Developer Dashboard, so they can copy-paste from a single doc
+instead of scrambling at publish time. Do not create it for extension work that is unrelated to
+publishing.
 
 #### When to create CHROMEWEBSTORE.md
 
-Create it the moment any of these happen:
+Create it when any of these happen:
 - The user says they want to publish an extension
 - The user asks to "prepare for the store" or "get ready to publish"
-- You're building a new extension that will clearly end up on the store
 - The user asks about store listing requirements
 
 Use the template in `references/webstore/chromewebstore-template.md` as your starting point. Read it
@@ -403,7 +420,7 @@ before generating the file.
 
 #### When to update CHROMEWEBSTORE.md
 
-Update it whenever:
+If the project has a `CHROMEWEBSTORE.md`, update it whenever:
 - **User-facing changes**: Bump the "Last Updated" date, update the feature list in
   descriptions, and add an entry to Version History
 - **manifest.json changes**: If permissions, host_permissions, or content_scripts changed,
@@ -429,8 +446,10 @@ Web Store review team rejects vague descriptions. "Makes your life easier" will 
 "Highlights search results on any webpage and lets you save highlights to a local list" will
 pass.
 
-**Never mention implementation details.** Users care what the extension does for them, not
-how it was built. Strip any mention of APIs, libraries, frameworks, or code patterns:
+**Lead with user benefits, not implementation details.** Users care what the extension does for
+them, not how it was built. For general-audience extensions, strip mentions of APIs, libraries,
+frameworks, or code patterns. Developer tools may name the technologies their users work with
+(for example, "Inspect Shadow DOM trees"), as long as each sentence still states a benefit:
 
 | ❌ Implementation detail (cut it) | ✅ User benefit (keep it) |
 |-----------------------------------|--------------------------|
@@ -453,9 +472,11 @@ for guidance on generating a privacy policy.
 Before submission, run through `references/webstore/review-checklist.md`. The most common
 first-submission failures:
 - Every permission and host_permission must have a specific justification (not "needed to work")
-- Privacy policy URL must be live and match the data use disclosure form
+- If the extension handles user data, the privacy policy URL must be live and match the data use
+  disclosure form
 - At least 1 screenshot at 1280×800 or 640×400
-- ZIP must exclude `.git/`, `node_modules/`, `.env`, `CHROMEWEBSTORE.md`
+- ZIP must contain only the files the extension loads: no `.git/`, `node_modules/`, `.env*`,
+  private keys (`*.pem`), or `CHROMEWEBSTORE.md`
 
 ### Store Listing Copy Guidelines
 
@@ -502,23 +523,23 @@ Verify EVERY item before delivering:
 - [ ] `manifest_version: 3` — no V2 APIs anywhere
 - [ ] All icon files referenced in manifest exist as real files with correct dimensions — or icons are omitted
 - [ ] Side panel has an explicit open trigger (not just a manifest declaration)
-- [ ] Code execution uses sandbox/blob/srcdoc — no `eval()` in extension pages
-- [ ] `tabs` permission declared if `tab.url` or `tab.title` is accessed
+- [ ] Code execution uses a manifest-declared sandbox page — no `eval()` in extension pages, and no `blob:`/`srcdoc` frames as a CSP workaround
+- [ ] `tab.url`/`tab.title` reads are covered by `tabs`, a matching host permission, or an `activeTab` grant
 - [ ] All code uses `async`/`await` — no `.then()` chains
 - [ ] Content scripts batch DOM updates with `requestAnimationFrame`
-- [ ] Service worker stores NO state in global variables — uses `chrome.storage`
+- [ ] Service worker persists state in `chrome.storage` — globals hold only transient, in-flight guards
 - [ ] No inline scripts or event handlers in HTML
 - [ ] Context menu actions show user confirmation
 - [ ] `"action": {}` (or more) present in manifest if using `chrome.action.*` APIs
-- [ ] If reading/scripting tabs from a side panel: use `tabs` + `host_permissions` (NOT `activeTab`)
+- [ ] If scripting tabs from a side panel: rely on an existing `activeTab` grant or scoped `host_permissions` — a click inside the panel grants nothing
 - [ ] DevTools panel paths in `chrome.devtools.panels.create()` are relative to extension root
 - [ ] Offscreen documents use ONLY `chrome.runtime` messaging — no `chrome.downloads`, `chrome.action`, etc.
 - [ ] All image refs in `chrome.notifications`, `chrome.action.setIcon`, etc. point to real files (or use data URLs)
-- [ ] Tab/desktop capture uses state locking to prevent double-start errors
-- [ ] `chrome.desktopCapture.chooseDesktopMedia` passes `targetTab` with `tabs` permission
+- [ ] Tab/desktop capture admits one start/stop transition at a time (synchronous guard, not an awaited storage read)
+- [ ] `chrome.desktopCapture.chooseDesktopMedia` passes a `targetTab` whose `url` is populated
 - [ ] `chrome.windows` calls use `getAll`/`getLastFocused`/`getCurrent` — NOT `.query()` (it doesn't exist)
 - [ ] `chrome.permissions.request()` in a service worker `onMessage` listener is called with no `await` before it (gesture is lost after the first async gap)
-- [ ] `chrome.userScripts` availability checked before use (API throws if user hasn't enabled it)
+- [ ] `chrome.userScripts` availability checked with a guarded method call before use (the API is undefined or throws until the user enables it)
 - [ ] User script configs persisted in `chrome.storage` and restored on `runtime.onInstalled` `"update"` reason
 - [ ] `configureWorld({ messaging: true })` called before user scripts send messages; listening on `onUserScriptMessage` not `onMessage`
 - [ ] `ScriptSource` entries each have exactly one of `code` or `file` (not both, not neither)

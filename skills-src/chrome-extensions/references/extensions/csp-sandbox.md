@@ -35,14 +35,14 @@ document.getElementById('btn').addEventListener('click', () => {
 
 ## Executing User Code (Code Playground Pattern)
 
-If you need to execute arbitrary code (e.g., a CodePen-like playground), you MUST use one of these
-approaches. **Extension CSP completely blocks `eval()`, `new Function()`, and inline scripts in
+If you need to execute arbitrary code (e.g., a CodePen-like playground), you MUST use a sandboxed
+page. **Extension CSP completely blocks `eval()`, `new Function()`, and inline scripts in
 normal extension pages.** There is no way around this — you need sandboxing.
 
-### Option 1: Sandboxed Page in Manifest (Recommended)
+### Sandboxed Page in Manifest
 
-Declare a sandboxed page in manifest.json. Sandboxed pages have a relaxed CSP that allows
-`eval()` and inline scripts, but they cannot access chrome.* APIs.
+Declare a sandboxed page in manifest.json. Sandboxed pages are served in a unique origin with
+their own CSP that allows `eval()` and inline scripts, but they cannot access chrome.* APIs.
 
 ```json
 {
@@ -80,6 +80,9 @@ iframe.contentWindow.postMessage({
 
 // sandbox.js — receive and execute
 window.addEventListener('message', (event) => {
+  // Only run code sent by the extension page that embeds this sandbox; ignore messages from
+  // any other window (for example, frames the user's HTML creates).
+  if (event.source !== window.parent) return;
   const { html, css, js } = event.data;
   // Clear previous content
   document.body.innerHTML = '';
@@ -108,47 +111,12 @@ window.addEventListener('message', (event) => {
 });
 ```
 
-### Option 2: Blob URL in iframe
+### Do NOT use `blob:` URLs or `srcdoc` to escape the CSP
 
-Create a self-contained HTML document via blob URL:
-
-```js
-function updatePreview(htmlCode, cssCode, jsCode) {
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><style>${cssCode}</style></head>
-<body>
-  ${htmlCode}
-  <script>${jsCode}<\/script>
-</body>
-</html>
-`;
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const iframe = document.getElementById('preview');
-  // Revoke previous URL
-  if (iframe.dataset.blobUrl) URL.revokeObjectURL(iframe.dataset.blobUrl);
-  iframe.dataset.blobUrl = url;
-  iframe.src = url;
-}
-```
-
-### Option 3: srcdoc Attribute
-
-```js
-const iframe = document.getElementById('preview');
-iframe.srcdoc = `
-  <!DOCTYPE html>
-  <style>${cssCode}</style>
-  ${htmlCode}
-  <script>${jsCode}<\/script>
-`;
-```
-
-Both blob URLs and srcdoc create a separate origin, so they bypass the extension's CSP.
-However, they also cannot access chrome.* APIs, and you cannot access their DOM directly
-from the extension page (same cross-origin restriction as sandbox).
+An iframe loaded from a `blob:` URL or `srcdoc` inherits the policy container — including the
+CSP — of the extension page that creates it, so inline `<script>` and `eval()` inside it stay
+blocked. An unsandboxed `srcdoc` frame is also same-origin with the extension page, so untrusted
+HTML in it can reach the page's DOM. Use the manifest sandbox page above.
 
 ### What NOT to Do
 

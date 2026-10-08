@@ -8,8 +8,11 @@
 }
 ```
 
-Note: `tabs` permission gives access to `url`, `title`, `favIconUrl` on Tab objects.
-Without it, you can still use `chrome.tabs` but won't see sensitive tab properties.
+Note: `url`, `pendingUrl`, `title`, and `favIconUrl` on Tab objects are visible for tabs the
+extension can access: every tab with the `tabs` permission, tabs matching a host permission, or a
+tab with an `activeTab` grant. Without any of these, you can still use `chrome.tabs` but won't see
+those properties. Domain-wide features (like grouping every tab by domain) need `tabs` or broad
+host permissions; acting on the one tab the user invoked the extension on only needs `activeTab`.
 
 ## Querying Tabs
 

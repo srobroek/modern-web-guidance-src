@@ -27,7 +27,7 @@ Add `"declarativeNetRequestFeedback"` permission to use `onRuleMatchedDebug` (de
     "priority": 1,
     "action": { "type": "block" },
     "condition": {
-      "urlFilter": "doubleclick.net",
+      "urlFilter": "||doubleclick.net/",
       "resourceTypes": ["script", "image", "xmlhttprequest", "sub_frame"]
     }
   },
@@ -36,7 +36,7 @@ Add `"declarativeNetRequestFeedback"` permission to use `onRuleMatchedDebug` (de
     "priority": 1,
     "action": { "type": "block" },
     "condition": {
-      "urlFilter": "google-analytics.com",
+      "urlFilter": "||google-analytics.com/",
       "resourceTypes": ["script", "xmlhttprequest"]
     }
   }
@@ -53,12 +53,17 @@ Add `"declarativeNetRequestFeedback"` permission to use `onRuleMatchedDebug` (de
 
 ### URL Filter Patterns
 
+Anchor filters to a whole domain. An unanchored or unterminated filter also matches unrelated URLs.
+
 | Pattern | Matches |
 |---------|---------|
-| `"doubleclick.net"` | Any URL containing "doubleclick.net" |
-| `"||doubleclick.net"` | Domain starts with doubleclick.net |
-| `"||example.com/ads/*"` | Specific path pattern |
-| `*://*.tracking.com/*` | Subdomain matching |
+| `"||doubleclick.net/"` | doubleclick.net and all its subdomains, any path (use this for domain blocking) |
+| `"||example.com/ads/"` | Paths under `/ads/` on example.com and its subdomains |
+| `"|https://www.example.com/"` | www.example.com only (no other subdomains), any path |
+| `"doubleclick.net"` | ❌ Any URL containing the text, including `https://example.com/?ref=doubleclick.net` |
+| `"||doubleclick.net"` | ❌ Also matches lookalike domains such as `doubleclick.network` |
+
+`*://*.example.com/*` is match-pattern syntax for `host_permissions`, not `urlFilter` syntax.
 
 ### Resource Types
 
@@ -74,7 +79,7 @@ await chrome.declarativeNetRequest.updateDynamicRules({
     id: 1000,
     priority: 1,
     action: { type: 'block' },
-    condition: { urlFilter: 'ads.example.com' }
+    condition: { urlFilter: '||ads.example.com/' }
   }],
   removeRuleIds: [] // IDs to remove
 });
@@ -90,19 +95,16 @@ chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
 });
 ```
 
-For production, count via `webRequest` (observe only) or maintain counts with `webNavigation`:
+For production, let Chrome count matched rules instead of observing traffic with `webRequest`
+(which would need broad host permissions and count requests your rules never blocked):
 
 ```js
-// Alternative: Use webRequest to observe (requires host_permissions)
-chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    // Count requests to known tracking domains
-    if (isTrackerDomain(new URL(details.url).hostname)) {
-      incrementBlockCount(details.tabId);
-    }
-  },
-  { urls: ["<all_urls>"] }
-);
+// Show the per-tab count of matched rules as the action badge (needs an "action" key).
+await chrome.declarativeNetRequest.setExtensionActionOptions({ displayActionCountAsBadgeText: true });
+
+// List the rules matched in a tab, e.g. from the popup. Without declarativeNetRequestFeedback,
+// this needs an activeTab grant for that tab (the action click that opens the popup grants it).
+const { rulesMatchedInfo } = await chrome.declarativeNetRequest.getMatchedRules({ tabId: tab.id });
 ```
 
 ## Limits

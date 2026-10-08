@@ -43,11 +43,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-// Open from a keyboard shortcut (defined in manifest commands)
-chrome.commands.onCommand.addListener(async (command) => {
-  if (command === 'open-side-panel') {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    await chrome.sidePanel.open({ windowId: tab.windowId });
+// Open from a keyboard shortcut (defined in manifest commands).
+// sidePanel.open() must run in response to the user action: call it before any other await.
+// onCommand passes the active tab, so no tabs.query() is needed first.
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command === 'open-side-panel' && tab) {
+    chrome.sidePanel.open({ windowId: tab.windowId });
   }
 });
 ```
@@ -103,7 +104,7 @@ async function getPageContent() {
 }
 ```
 
-Or use `chrome.scripting.executeScript` from the side panel (requires `scripting` and `activeTab` permissions):
+Or use `chrome.scripting.executeScript` from the side panel. It needs the `scripting` permission and access to the tab: a matching host permission, or an `activeTab` grant that already exists for that tab (for example, from the action click that opened the panel). A click inside the panel does not create a grant — see below.
 
 ```js
 const [{ result }] = await chrome.scripting.executeScript({
@@ -128,20 +129,23 @@ const [{ result }] = await chrome.scripting.executeScript({
 - Side panel HTML files have full access to chrome.* APIs
 - The side panel persists across tab switches (per-window)
 
-### ⚠️ `activeTab` does NOT work from side panel interactions
+### ⚠️ Clicks inside the side panel do NOT grant `activeTab`
 
-`activeTab` only grants tab access on direct user gestures: clicking the extension icon, context
+`activeTab` is granted when the user invokes the extension: clicking the extension icon, context
 menu items, keyboard shortcuts, or omnibox suggestions. **Clicking a button inside a side panel
-does NOT activate `activeTab`.**
+does NOT create a new grant.** A grant from the action click that opened the panel still covers
+that tab until the user navigates to another site, but not tabs the user switches to afterwards.
 
-If your side panel needs to read or modify page content (e.g., a "Summarize" button), use
-`tabs` + `host_permissions` instead:
+If your side panel must read or modify page content on tabs it was not invoked on (e.g., a
+"Summarize" button that works after tab switches), declare host access for only the sites it
+needs. Host access also exposes `tab.url`/`tab.title`, so `tabs` is not required:
 
 ```json
 {
-  "permissions": ["tabs", "scripting", "sidePanel"],
-  "host_permissions": ["<all_urls>"]
+  "permissions": ["scripting", "sidePanel"],
+  "host_permissions": ["https://docs.example.com/*"]
 }
 ```
 
-Do NOT rely on `activeTab` for side panel functionality.
+Use `"<all_urls>"` only when the panel genuinely works on every site (and expect extra review
+scrutiny), or request it at runtime through `optional_host_permissions`.

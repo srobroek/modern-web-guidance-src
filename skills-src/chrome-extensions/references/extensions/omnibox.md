@@ -13,7 +13,17 @@ User types `wiki` + Space in the address bar to activate.
 ## Providing Suggestions
 
 ```js
+// Descriptions are XML: escape the five predefined entities in any text you interpolate,
+// or titles like "AT&T" and input containing "<" break the suggestion markup.
+function escapeXml(text) {
+  const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' };
+  return text.replace(/[&<>"']/g, (ch) => entities[ch]);
+}
+
+let latestInput = '';
+
 chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
+  latestInput = text;
   if (text.length < 2) return;
 
   try {
@@ -21,10 +31,12 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
       `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(text)}&limit=5&format=json`
     );
     const [, titles, , urls] = await response.json();
+    // Responses can arrive out of order; drop results for input the user has already changed.
+    if (text !== latestInput) return;
 
     const suggestions = titles.map((title, i) => ({
       content: urls[i],
-      description: `${title} - <url>${urls[i]}</url>`
+      description: `${escapeXml(title)} - <url>${escapeXml(urls[i])}</url>`
     }));
 
     suggest(suggestions);
@@ -57,7 +69,7 @@ chrome.omnibox.onInputEntered.addListener((text, disposition) => {
 
 ## Description Formatting
 
-Suggestions support XML-like formatting:
+Suggestions support XML-like formatting (escape interpolated text with `escapeXml()` above):
 - `<url>text</url>` — renders as URL style
 - `<match>text</match>` — bold match highlighting
 - `<dim>text</dim>` — dimmed/secondary text
@@ -67,7 +79,7 @@ Suggestions support XML-like formatting:
 ```js
 chrome.omnibox.onInputChanged.addListener((text, suggest) => {
   chrome.omnibox.setDefaultSuggestion({
-    description: `Search Wikipedia for "<match>${text}</match>"`
+    description: `Search Wikipedia for "<match>${escapeXml(text)}</match>"`
   });
   // ... fetch and suggest
 });
