@@ -5,3 +5,4 @@
 - The implementation must exhibit isolated layout recalculations (verifiable via performance traces showing smaller layout cost when items are mutated within columns).
 - The application must not exhibit global reflows when dragging items between columns.
 - If `content-visibility` is not supported, target column elements should have `contain: layout style paint` (or similar) applied to provide partial layout isolation.
+- Target column elements must have a fixed inline size and a block size that does not depend on their children (e.g. a fixed `width` with `height: 100%` of the board), with overflowing children scrolling inside the column, so moving an item cannot resize the column.
