@@ -64,7 +64,8 @@ Before attempting to deploy global security policies, focus on code-level hygien
 - **DO**: Prefer `textContent` or `innerText` over `innerHTML` when setting text content.
 - **DO**: Use `setHTML()` (part of the Sanitizer API; see {{ GUIDE_REF("sanitize-untrusted-html") }}) when available to safely insert untrusted HTML without going through `innerHTML`.
 - **DO NOT**: Use `innerHTML` or `setHTMLUnsafe` with untrusted or unsanitized input.
-- **DO**: Use DOMParser or create elements programmatically (`document.createElement`) instead of concatenating HTML strings.
+- **DO**: Create elements programmatically (`document.createElement` plus `textContent`) instead of concatenating HTML strings.
+- **DO NOT**: Treat `DOMParser.parseFromString()` as a safe alternative for untrusted HTML. It does not sanitize: the parsed document is inert, but its event handlers and scripts can run once you move its nodes into the page. Use `setHTML()` or `Document.parseHTML()` instead.
 
 **Dangerous sinks to grep for**: `innerHTML`, `outerHTML`, `document.write`, `eval`, `setTimeout` with a string argument, `script.src`.
 
@@ -150,14 +151,14 @@ Use "Report-Only" headers to identify potential breakages before they happen.
 **Example headers:**
 ```http
 Reporting-Endpoints: default="https://reports.example/default", main-endpoint="https://reports.example/main"
-Content-Security-Policy-Report-Only: script-src 'nonce-{RANDOM}' 'strict-dynamic' 'report-sample'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; require-trusted-types-for 'script'; report-to main-endpoint;
+Content-Security-Policy-Report-Only: script-src 'nonce-{RANDOM}' 'strict-dynamic' 'report-sample' https: 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; require-trusted-types-for 'script'; report-to main-endpoint;
 ```
 
-The `'strict-dynamic'`, `https:`, and `'unsafe-inline'` tokens together form a backwards-compatibility ladder: modern browsers honor `'strict-dynamic'` (nonce-propagating) and ignore the others; older browsers fall back to `https:`; very old browsers fall back to `'unsafe-inline'`. The fallbacks are harmless on any browser that supports a stricter token.
+The `'strict-dynamic'`, `https:`, and `'unsafe-inline'` tokens together form a backwards-compatibility ladder: modern browsers honor `'strict-dynamic'` (nonce-propagating) and ignore the others; older browsers fall back to `https:`; very old browsers fall back to `'unsafe-inline'`. The fallbacks are harmless on any browser that supports a stricter token: a browser that supports nonces or hashes ignores `'unsafe-inline'`, and a browser that supports `'strict-dynamic'` ignores `https:`. Every `script-src` example in this guide, report-only and enforced, includes the ladder.
 
-**Managing report false-positives**: Reporting endpoints receive a significant volume of false-positive violation reports caused by client-side middleware, aggressive browser extensions, ancient browsers, web crawlers, or antivirus scanners. When analyzing report-only logs, focus on high-frequency patterns from modern user-agents and filter out noise before making deployment decisions. Specifically:
+**Managing report false-positives**: Reporting endpoints receive a significant volume of false-positive violation reports caused by client-side middleware, aggressive browser extensions, ancient browsers, web crawlers, or antivirus scanners. When analyzing report-only logs, start with high-frequency patterns from modern user-agents and filter out noise before making deployment decisions. Specifically:
 - **Filter out noise**: Ignore reports sent by old browsers with known bugs triggering spurious violations, reports for markup known to be injected by popular browser extensions or client-side middleware (like identical reports seen across many distinct applications), and reports that do not contain enough information to debug.
-- **Ignore low-volume reports**: If a policy is deployed, a low violation volume often indicates a false positive that can be safely ignored.
+- **Do not dismiss rare reports**: A low violation volume does not make a report a false positive. A targeted injection attempt can produce a single report. Triage every report from a modern browser whose blocked URI, sample, or document URI you cannot explain before discarding it.
 - **Leverage `'report-sample'`**: Always include `'report-sample'` in your `script-src` directives. This instructs the browser to include the first 40 characters of the violating script or inline code snippet in the violation report, which makes debugging much easier.
 
 ### 2.3 Data Hygiene for Reports
@@ -198,7 +199,7 @@ Once filtered and triaged, analyze the reports against the following common scen
 When enforcing `Content-Security-Policy`, always keep `Reporting-Endpoints` and `report-to` wired up on the enforced header so any regressions remain visible.
 
 **Mandatory directives to set:**
-- `script-src 'nonce-{RANDOM}' 'strict-dynamic' 'report-sample'` (or SHA-256/384/512 script hashes for static HTML) — the core directive of any CSP and the primary mechanism to prevent XSS.
+- `script-src 'nonce-{RANDOM}' 'strict-dynamic' 'report-sample' https: 'unsafe-inline'` (or SHA-256/384/512 script hashes for static HTML) — the core directive of any CSP and the primary mechanism to prevent XSS. `https:` and `'unsafe-inline'` are the fallback ladder for older browsers (§2.2), not the primary protection.
 - `object-src 'none'` — blocks plugin-based code execution (`<object>`, `<embed>`).
 - `base-uri 'none'` — blocks `<base>` tag hijacking of relative URLs.
 - `frame-ancestors 'self'` — prevents clickjacking alongside `X-Frame-Options: SAMEORIGIN` (§1.4).
@@ -209,7 +210,7 @@ When enforcing `Content-Security-Policy`, always keep `Reporting-Endpoints` and 
 **Enforced Header Example (CSP with reporting):**
 ```http
 Reporting-Endpoints: main-endpoint="https://reports.example/main"
-Content-Security-Policy: script-src 'nonce-{RANDOM}' 'strict-dynamic' 'report-sample'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; require-trusted-types-for 'script'; report-to main-endpoint;
+Content-Security-Policy: script-src 'nonce-{RANDOM}' 'strict-dynamic' 'report-sample' https: 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; require-trusted-types-for 'script'; report-to main-endpoint;
 ```
 
 HTML for nonce-based CSP:
@@ -226,7 +227,7 @@ crypto.getRandomValues(bytes);
 const nonce = btoa(String.fromCharCode(...bytes));
 
 const csp = [
-  `script-src 'nonce-${nonce}' 'strict-dynamic' 'report-sample'`,
+  `script-src 'nonce-${nonce}' 'strict-dynamic' 'report-sample' https: 'unsafe-inline'`,
   "object-src 'none'",
   "base-uri 'none'",
   "frame-ancestors 'self'",
@@ -241,7 +242,7 @@ headers.set('Content-Security-Policy', csp);
 html = html.replace(/<script\b(?![^>]*\bnonce=)/gi, `<script nonce="${nonce}"`);
 ```
 
-For static/cached HTML (SPAs) where a per-response nonce is not possible, use hash-based CSP: compute the `sha256-` hash of each script and list the hashes in `script-src` alongside `'strict-dynamic' 'report-sample'`.
+For static/cached HTML (SPAs) where a per-response nonce is not possible, use hash-based CSP: compute the `sha256-` hash of each script and list the hashes in `script-src` alongside `'strict-dynamic' 'report-sample' https: 'unsafe-inline'`.
 
 **Avoid**: Broad scheme or domain allowlists (such as `https:` alone or `script-src https://cdn.example.com` without `'strict-dynamic'`) as the primary `script-src` protection — they are easily bypassed by open redirects, JSONP endpoints, and dependency injection on the allowed origin.
 
