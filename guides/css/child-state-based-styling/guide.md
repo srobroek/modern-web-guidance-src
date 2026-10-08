@@ -76,9 +76,9 @@ To build a component that changes its styling based on a child's state:
 
 {{ BASELINE_STATUS("has") }}
 
-If the state-based styling is critical to the user experience or page layout, you must provide a fallback for browsers that do not support the `:has()` selector. For purely decorative effects, `:has()` can be used as a progressive enhancement without a fallback.
+`:has()` is Baseline Widely available, so by default use it without a fallback. Add a fallback only when the project's browser support policy includes browsers without `:has()` (see the compatibility data above) **and** the state-based styling is critical to the user experience or layout. Purely decorative effects never need one.
 
-**MANDATORY**: When implementing a fallback for critical features, you must use `@supports not selector(:has(*))` in your CSS to define a traditional class-based fallback. If the critical state change relies on user interaction, you must also use a small inline script with `CSS.supports()` to toggle that class based on the equivalent JavaScript event (e.g., `change`, `focus`, `blur`) representing the state change.
+When such a policy requires a fallback, use `@supports not selector(:has(*))` in your CSS to define a traditional class-based fallback. If the state change relies on user interaction, also add a small script, gated on `CSS.supports()`, that toggles that class from the equivalent JavaScript event (e.g., `change`, `focus`, `blur`) and syncs the initial state, since a control can render already checked or be restored by the browser.
 
 ```css
 /* Fallback CSS for older browsers */
@@ -101,10 +101,10 @@ if (!CSS.supports('selector(:has(*))')) {
   const card = document.querySelector('.theme-card');
 
   if (toggle && card) {
-    // Manually toggle the fallback class when the input state changes
-    toggle.addEventListener('change', (e) => {
-      card.classList.toggle('is-active', e.target.checked);
-    });
+    const sync = () => card.classList.toggle('is-active', toggle.checked);
+    // Sync the initial state (checked attribute or browser form restoration), then every change
+    sync();
+    toggle.addEventListener('change', sync);
   }
 }
 ```
