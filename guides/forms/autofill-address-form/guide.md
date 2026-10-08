@@ -77,4 +77,4 @@ Add the `required` attribute to mandatory fields.
 
 {{ BASELINE_STATUS("autofill") }}
 
-Autofill is a progressive enhancement. In browsers that do not support autofill, users will simply need to manually enter their address details. The semantic HTML constraints (such as `type`, `inputmode`, and `required`) will still function appropriately as standard form validation.
+The status above is for the `:autofill` CSS pseudo-class, which styles fields the browser has filled; this guide does not need it. Browser autofill itself, driven by the `autocomplete` attribute, works in all major browsers, including Firefox (whose `:autofill` support since Firefox 86 is partial: it matches autofilled username and password fields only). Where a browser or user has no saved address, users type the details by hand, and the semantic HTML constraints (such as `type`, `inputmode`, and `required`) still provide standard form validation.
