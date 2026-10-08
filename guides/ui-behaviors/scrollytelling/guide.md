@@ -60,6 +60,8 @@ Finally, you can use the `animation-range` property to specify the exact range o
 
 ## Example code
 
+The animations only run when the user has not asked for reduced motion and the browser fully supports scroll-driven animations. Without the `@supports` guard, a browser that accepts `animation-duration: auto` but has no scroll timelines (for example, Safari 18.4 to 18.x) runs both animations against the document timeline, where `auto` means `0s`, and the `forwards` fill of `animate-out` leaves every section at `opacity: 0`.
+
 ```css
 html {
   timeline-scope: --tl-1, --tl-2, --tl-3, --tl-4, --tl-5;
@@ -73,34 +75,31 @@ html {
   section:nth-child(5){ view-timeline: --tl-5 block; }
 }
 
-@keyframes animate-in {
-  from { scale: 0.5; opacity: 0; transform: rotateY(-180deg); }
-  to { transform: rotateY(0deg); }
-}
-@keyframes animate-out {
-  to { translate: 100% 0; opacity: 0; }
-}
+/* MANDATORY Copy-Paste Safety: only animate for users who have not asked for reduced motion,
+   in browsers with full scroll-driven animation support */
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((animation-timeline: scroll()) and (animation-range: 0% 100%)) {
+    @keyframes animate-in {
+      from { scale: 0.5; opacity: 0; transform: rotateY(-180deg); }
+      to { transform: rotateY(0deg); }
+    }
+    @keyframes animate-out {
+      to { translate: 100% 0; opacity: 0; }
+    }
 
-#animated {
-  section {
-    animation: animate-in auto linear both, animate-out auto linear forwards;
-    animation-range: entry 25% cover 50%, exit 50% exit 75%;
-    backface-visibility: hidden;
-  }
+    #animated {
+      section {
+        animation: animate-in auto linear both, animate-out auto linear forwards;
+        animation-range: entry 25% cover 50%, exit 50% exit 75%;
+        backface-visibility: hidden;
+      }
 
-  section:nth-child(1){ animation-timeline: --tl-1; }
-  section:nth-child(2){ animation-timeline: --tl-2; }
-  section:nth-child(3){ animation-timeline: --tl-3; }
-  section:nth-child(4){ animation-timeline: --tl-4; }
-  section:nth-child(5){ animation-timeline: --tl-5; }
-}
-
-/* MANDATORY Copy-Paste Safety: Disable continuous storytelling motion for sensitive users */
-@media (prefers-reduced-motion: reduce) {
-  #animated section {
-    animation: none !important;
-    opacity: 1 !important;
-    transform: none !important;
+      section:nth-child(1){ animation-timeline: --tl-1; }
+      section:nth-child(2){ animation-timeline: --tl-2; }
+      section:nth-child(3){ animation-timeline: --tl-3; }
+      section:nth-child(4){ animation-timeline: --tl-4; }
+      section:nth-child(5){ animation-timeline: --tl-5; }
+    }
   }
 }
 ```
@@ -133,54 +132,73 @@ In browsers with built-in support for scroll-driven animations, ALWAYS use the n
 
 Note that not every effect can be recreated using the fallbacks approach.
 
-For this use-case specifically, the following script applies the fallback for browsers that do not support scroll-driven animations. It uses an `IntersectionObserver` to track the visibility of each `#tracked section` element and updates the `transform` property of the corresponding `#animated section` accordingly.
+For this use-case specifically, the following script applies the fallback for browsers that do not support scroll-driven animations. It uses an `IntersectionObserver` to track the visibility of each `#tracked section` element and updates the `opacity`, `transform` and `translate` of the corresponding `#animated section` accordingly. It runs only when the native `@supports` condition fails, so the two never compete, and it leaves the sections untouched while the user prefers reduced motion.
 
 ```js
-const animatedSections = document.querySelectorAll('#animated section');
+const supportsScrollTimelines = CSS.supports(
+  '(animation-timeline: scroll()) and (animation-range: 0% 100%)'
+);
 
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    const sectionIndex = Array.from(document.querySelectorAll('#tracked section')).indexOf(entry.target);
-    if (sectionIndex !== -1) {
-      const animatedSection = animatedSections[sectionIndex];
+if (!supportsScrollTimelines) {
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const trackedSections = Array.from(document.querySelectorAll('#tracked section'));
+  const animatedSections = document.querySelectorAll('#animated section');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const animatedSection = animatedSections[trackedSections.indexOf(entry.target)];
+      if (!animatedSection) return;
+
+      // Reduced motion: show the section as-is (the fallback CSS does not hide it either).
+      if (reduceMotion.matches) {
+        animatedSection.style.removeProperty('opacity');
+        animatedSection.style.removeProperty('transform');
+        animatedSection.style.removeProperty('translate');
+        return;
+      }
+
       const ratio = entry.intersectionRatio;
+      // The ratio is the same for a section entering at the bottom and one leaving at
+      // the top; its position relative to the viewport tells the two apart.
+      const isLeaving = entry.boundingClientRect.top < (entry.rootBounds?.top ?? 0);
 
-      // Animate-in
       animatedSection.style.opacity = ratio;
-      animatedSection.style.transform = `scale(${0.5 + ratio * 0.5}) rotateY(${-180 + ratio * 180}deg)`;
-
-      // Animate-out
-      if (ratio < 0.5) {
-        animatedSection.style.translate = `${(0.5 - ratio) * 2 * 100}% 0`;
+      if (isLeaving) {
+        // Animate-out: slide away while fading out
+        animatedSection.style.transform = 'none';
+        animatedSection.style.translate = `${(1 - ratio) * 100}% 0`;
       } else {
+        // Animate-in: grow and turn while fading in
+        animatedSection.style.transform = `scale(${0.5 + ratio * 0.5}) rotateY(${-180 + ratio * 180}deg)`;
         animatedSection.style.translate = '0 0';
       }
-    }
-  });
-}, { threshold: Array.from({length: 101}, (_, i) => i / 100) });
+    });
+  }, { threshold: Array.from({length: 101}, (_, i) => i / 100) });
 
-document.querySelectorAll('#tracked section').forEach(section => {
-  observer.observe(section);
-});
+  trackedSections.forEach(section => observer.observe(section));
+
+  // When the preference changes, re-observe: each new observation delivers a fresh entry.
+  reduceMotion.addEventListener('change', () => {
+    trackedSections.forEach(section => {
+      observer.unobserve(section);
+      observer.observe(section);
+    });
+  });
+}
 ```
 
-And the accompanying CSS:
+And the accompanying CSS, which sets the starting state only on the fallback path and never for reduced-motion users:
 
 ```css
-#animated section {
-  opacity: 0;
-  transform: scale(0.5)  rotateY(-180deg);
-  backface-visibility: hidden;
-}
-
-/* MANDATORY Copy-Paste Safety: Ensure content remains fully visible and legible for assistive technologies or users with motion sensitivities */
-@media (prefers-reduced-motion: reduce) {
-  #animated section {
-    opacity: 1 !important;
-    transform: none !important;
-    translate: 0 0 !important;
+@media (prefers-reduced-motion: no-preference) {
+  @supports not ((animation-timeline: scroll()) and (animation-range: 0% 100%)) {
+    #animated section {
+      opacity: 0;
+      transform: scale(0.5)  rotateY(-180deg);
+      backface-visibility: hidden;
+    }
   }
 }
 ```
 
-This fallback provides a more accurate, scroll-driven animation for browsers that do not support the native CSS feature, ensuring a more consistent experience for all users. By using a series of thresholds for the `IntersectionObserver`, we can track the scroll position with more precision and create a smoother animation.
+This fallback is an approximation, not an equivalent. It maps each tracked section's visible fraction onto the animation instead of the exact `entry 25% cover 50%` and `exit 50% exit 75%` ranges, so the effects start and finish at different scroll positions, and a tracked section taller than the viewport never reaches a ratio of 1, so its counterpart never fully appears.
