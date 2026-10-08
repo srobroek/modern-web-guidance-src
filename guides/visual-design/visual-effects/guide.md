@@ -50,7 +50,8 @@ To support these browsers, use the token only when its usage is safe by defining
   --in-oklch: ;
 }
 
-@supports (linear-gradient(in oklab, white, black)) {
+/* A bare value is not a valid condition and always evaluates false: test a property: value pair */
+@supports (background: linear-gradient(in oklab, white, black)) {
   :root {
     --in-oklab: in oklab;
     --in-oklch: in oklch;

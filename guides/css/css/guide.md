@@ -196,7 +196,7 @@ Both rules express legitimate _intent_: buttons are generally neutral, but prima
 
 #### No global resets
 
-**DO NOT** use global resets (styles on `*`) as they cannot be overridden by web components or lower-priority cascade layers (without `!important`). Instead, apply reset styles to specific element types and/or conditions.
+**DO NOT** use unlayered global resets (styles on `*` outside any cascade layer). Unlayered styles beat every layered style, and outer-document styles beat a web component's own `:host` styles, so overriding such a reset takes `!important`. If you need reset styles, put them in the lowest-priority layer (e.g., the `reset` layer above) and apply them to specific element types and/or conditions.
 
 ### Nesting and scoping
 
