@@ -8,16 +8,16 @@ web-feature-ids:
 # Select Menu Interaction
 
 ## The Problem
-For mandatory dropdowns (e.g., "Choose a Country"), standard validation flags the field as invalid immediately if the default option has an empty value. This can create visual noise. We want to show the error only if the user opens the menu and closes it without choosing an option, or attempts to submit the form.
+For mandatory dropdowns (e.g., "Choose a Country"), standard validation flags the field as invalid immediately if the default option has an empty value. This can create visual noise. We want to show the error only after the user picks the empty option, or attempts to submit the form while nothing is chosen. Opening and closing the menu without changing the selection is not an interaction and must not show the error.
 
 ## The Solution
-The `:user-invalid` pseudo-class works seamlessly with `<select>` elements. It respects the user's interaction flow: simply loading the page or focusing/blurring without making a change doesn't count as an interaction, so the field stays neutral until they actively attempt a selection.
+The `:user-invalid` pseudo-class works seamlessly with `<select>` elements. It respects the user's interaction flow: loading the page, focusing and blurring, or opening and closing the menu without changing the selection doesn't count as an interaction, so the field stays neutral until the user picks an option or attempts to submit.
 
 ### Implementation Strategy
 
-1.  **HTML Constraint**: Use a `<select>` with `required`. The first option should have `value=""` and ideally be disabled/hidden to force a valid choice.
+1.  **HTML Constraint**: Use a `<select>` with `required`. The first option should have `value=""` and ideally be disabled/hidden to force a valid choice. A disabled placeholder cannot be picked again, so the error then appears only on a submit attempt.
 2.  **Visual Feedback**: Use `:user-invalid` to style the select box border.
-3.  **Timing**: The browser considers the field "interacted" if the user changes the value (even back to the default invalid state) before they blur the control, or upon form submission.
+3.  **Timing**: The browser marks the select as interacted as soon as the user picks an option (no blur needed), and on a submit attempt. Re-picking an enabled empty placeholder therefore shows the error immediately.
 
 ## Implementation Guide
 
@@ -25,7 +25,7 @@ The `:user-invalid` pseudo-class works seamlessly with `<select>` elements. It r
 The "placeholder" option is key here.
 
 ```html
-<form>
+<form id="country-form">
   <div class="field">
     <label for="country">Country</label>
     <select
@@ -56,18 +56,21 @@ The "placeholder" option is key here.
 }
 
 /*
-  Only show error after the user visits the select menu.
+  Only show the error after the user picks an option or attempts to submit.
+  :is() keeps the fallback class working in browsers without :user-invalid
+  (a plain comma list would be dropped whole there). The shared fallback CSS
+  below targets input elements, so a select needs these select rules.
 */
-select:user-invalid {
+select:is(:user-invalid, .user-invalid-fallback) {
   border-color: #d93025;
   background-color: #fce8e6;
 }
 
-select:user-invalid + .error-msg {
+select:is(:user-invalid, .user-invalid-fallback) + .error-msg {
   display: block;
 }
 
-select:user-valid {
+select:is(:user-valid, .user-valid-fallback) {
   border-color: #188038;
 }
 ```
@@ -75,6 +78,12 @@ select:user-valid {
 ## Fallbacking & Browser Support
 
 {{ FEATURE_FALLBACKS("user-pseudos") }}
+
+If you use the JavaScript fallback, initialize it on the form that holds the select:
+
+```javascript
+UserInvalidFallback.init(document.getElementById('country-form'));
+```
 
 ## Other Considerations
 
