@@ -88,7 +88,7 @@
     Checking support...
   </div>
 
-  <form id="demo-form" action="#" onsubmit="event.preventDefault();" novalidate>
+  <form id="demo-form" action="#">
     <div class="form-group">
       <label for="full-name">Full Name *</label>
       <input type="text" id="full-name" name="full-name" required aria-errormessage="name-error">
@@ -201,6 +201,10 @@
           if (state.hasInteracted) {
             updateState(input);
           }
+        } else if (event.type === 'invalid') {
+          // A submit attempt flags every invalid field, even untouched ones, as :user-invalid does
+          dirtyState.set(input, { hasInteracted: true, hasBlurred: true });
+          updateState(input);
         }
       };
 
@@ -212,18 +216,15 @@
         root.addEventListener('input', handleEvent);
         root.addEventListener('change', handleEvent);
         root.addEventListener('reset', handleEvent, true); // Capture resets
+        root.addEventListener('invalid', handleEvent, true); // `invalid` does not bubble; capture it
       };
 
       return { init };
     })();
 
-    // Mandatory Aria-Invalid synchronization for Native Mode
+    // Mandatory aria-invalid synchronization for native mode, keyed on :user-invalid
     const syncNativeAriaInvalid = (input) => {
-      if (!input.checkValidity()) {
-        input.setAttribute('aria-invalid', 'true');
-      } else {
-        input.removeAttribute('aria-invalid');
-      }
+      input.setAttribute('aria-invalid', input.matches(':user-invalid') ? 'true' : 'false');
     };
 
     form.addEventListener('blur', (e) => {
@@ -232,17 +233,22 @@
       }
     }, true);
 
-    form.addEventListener('submit', () => {
+    // A submit attempt with invalid fields fires no submit event; it fires a
+    // non-bubbling invalid event at each invalid field instead.
+    form.addEventListener('invalid', (e) => {
       if (useNativeLogic) {
-        form.querySelectorAll('input[required]').forEach(syncNativeAriaInvalid);
+        syncNativeAriaInvalid(e.target);
+      }
+    }, true);
+
+    form.addEventListener('input', (e) => {
+      if (useNativeLogic && e.target.hasAttribute('aria-invalid')) {
+        syncNativeAriaInvalid(e.target);
       }
     });
 
-    form.addEventListener('input', (e) => {
-      if (useNativeLogic && e.target.matches('input[required]') && e.target.checkValidity()) {
-        e.target.removeAttribute('aria-invalid');
-      }
-    });
+    // Keep the demo on this page once the form is valid
+    form.addEventListener('submit', (e) => e.preventDefault());
 
     // Init
     updateFeatureState();

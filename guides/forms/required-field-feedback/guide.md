@@ -74,40 +74,15 @@ input:required:user-valid {
 
 ### 3. JavaScript State Synchronization
 
-MANDATORY: Because `:user-invalid` is a visual state, you MUST provide a JavaScript bridge to sync `aria-invalid="true"` dynamically for assistive technologies when a user blurs an invalid field or attempts submission.
+MANDATORY: Because `:user-invalid` is a visual state, you MUST provide a JavaScript bridge to sync `aria-invalid` for assistive technologies. Use one script for this, keyed on `:user-invalid` itself, so the ARIA state never disagrees with what the field shows.
 
-```javascript
-const form = document.getElementById('feedback-form');
+A `submit` listener cannot do this job: while any field is invalid, interactive validation blocks the submission and no `submit` event fires. Instead the browser fires a non-bubbling `invalid` event at each invalid field, which the script captures.
 
-const syncAriaInvalid = (input) => {
-  if (!input.checkValidity()) {
-    input.setAttribute('aria-invalid', 'true');
-  } else {
-    input.removeAttribute('aria-invalid');
-  }
-};
-
-// Sync on blur when a user finishes interacting
-form.addEventListener('blur', (e) => {
-  if (e.target.matches('input[required]')) {
-    syncAriaInvalid(e.target);
-  }
-}, true);
-
-// Sync all required fields when submission is attempted
-form.addEventListener('submit', () => {
-  form.querySelectorAll('input[required]').forEach(syncAriaInvalid);
-});
-
-// Remove error state immediately upon correction
-form.addEventListener('input', (e) => {
-  if (e.target.matches('input[required]') && e.target.checkValidity()) {
-    e.target.removeAttribute('aria-invalid');
-  }
-});
-```
+{{ FEATURE("user-pseudos", "aria-invalid") }}
 
 ## Fallbacking & Browser Support
+
+Add the JavaScript fallback below only if your browser support policy includes browsers without `:user-invalid` (see the support status below); otherwise the native pseudo-class is enough.
 
 {{ FEATURE_FALLBACKS("user-pseudos") }}
 
@@ -115,4 +90,4 @@ form.addEventListener('input', (e) => {
 
 1.  **Asterisks**: It is still best practice to indicate required fields visually (e.g., with an asterisk `*`) in the label, so users know what to expect *before* they interact.
 2.  **Submit Buttons**: Unlike `disabled` buttons, keep your submit button enabled. If the user clicks it, the browser will automatically trigger `:user-invalid` on all empty required fields and focus the first one. This is excellent for accessibility and UX.
-3.  **Accessibility**: {{ FEATURE("user-pseudos", "aria-invalid") }}
+3.  **Accessibility**: Keep the `aria-invalid` synchronization from step 3, and associate each error message with its field through `aria-errormessage` or `aria-describedby`.
