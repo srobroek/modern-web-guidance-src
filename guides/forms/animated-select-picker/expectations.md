@@ -4,7 +4,7 @@
 - The implementation MUST animate the dropdown icon using the `:open::picker-icon` pseudo-element selector (e.g., applying `transform: rotate(180deg)`).
 - The implementation MUST NOT use JavaScript as the primary mechanism for toggling top-layer visibility or running the dropdown animation.
 - The `<button>` tag MUST contain a `<selectedcontent>` element to mirror selections and MUST NOT contain legacy `<selectedoption>` element.
-- A progressive enhancement fallback MUST be included that checks for `!CSS.supports("appearance", "base-select")` before logging support or applying standard legacy fallbacks.
+- If the implementation uses JavaScript for custom select behavior, it MUST gate that script with `CSS.supports("appearance", "base-select")`. Without such script, no JavaScript fallback is needed: unsupported browsers render a standard select.
 - The `<select>` MUST have a `name` attribute and an associated `<label>`. This ensures that even with a custom UI, the component remains accessible to screen readers and works correctly with standard form submissions.
 - Decorative inline SVG icons inside `<option>` elements MUST explicitly define `aria-hidden="true"`.
 - The checked state of an `<option>` MUST be denoted using multiple visual indicators (e.g., modifying both font-weight and background-color) to avoid color-only state communication.
