@@ -27,7 +27,7 @@ As a rule of thumb, typically elements using a different `color-scheme` are comp
 
 When considering using a different `color-scheme` on an element, ask yourself:
 
-- Should built-in browser UI that is not otherwise customized (e.g. form controls, scrollbars, etc) use that color-scheme or adapt to the page's color-scheme? -> if the former, don't use `color-scheme`.
+- Should built-in browser UI that is not otherwise customized (e.g. form controls, scrollbars, etc) use that color-scheme or adapt to the page's color-scheme? -> if the latter, don't use `color-scheme`.
 - Should any `light-dark()` colors resolve like they do for the rest of the page or based on the override? -> if the former, don't use `color-scheme`.
 - Should descendants be in that `color-scheme`? If not, don't use `color-scheme`.
 

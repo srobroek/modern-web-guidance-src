@@ -11,21 +11,30 @@ For browsers that support `color-scheme` but not yet `light-dark()`, light and d
   --brand-accent-dark: #00e5ff;
   --accent-color: var(--brand-accent-light);
 
-  /* MANDATORY: Fallback for browsers without light-dark support */
-  @media (prefers-color-scheme: dark) {
-    --accent-color: var(--brand-accent-dark);
-  }
-
-  /* OPTIONAL: use light-dark() for more control of built-in UI colors */
-  @supports (color: light-dark(white, black)) {
-    --accent-color: light-dark(var(--brand-accent-light), var(--brand-accent-dark));
-  }
-
   /* MANDATORY: Automatically adapt native UI to user system preferences */
   color-scheme: light dark;
 
   /* Example inherited color property */
   accent-color: var(--accent-color);
+}
+
+/*
+  MANDATORY: Keep these at-rules at the top level, not nested inside `:root`.
+  Browsers old enough to lack light-dark() may also lack CSS nesting and would drop nested rules.
+*/
+
+/* MANDATORY: Fallback for browsers without light-dark support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent-color: var(--brand-accent-dark);
+  }
+}
+
+/* OPTIONAL: use light-dark() for more control of built-in UI colors */
+@supports (color: light-dark(white, black)) {
+  :root {
+    --accent-color: light-dark(var(--brand-accent-light), var(--brand-accent-dark));
+  }
 }
 
 pre, code {

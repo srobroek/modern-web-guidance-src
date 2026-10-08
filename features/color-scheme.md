@@ -23,13 +23,16 @@ To adapt to the user's preferences in older browsers, use `prefers-color-scheme`
   --color-brand-dark: #00e5ff;
   --color-brand: var(--color-brand-light);
 
-  /* MANDATORY: Fallback for browsers without light-dark support */
-  @media (prefers-color-scheme: dark) {
-    --color-brand: var(--color-brand-dark);
-  }
-
   /* Ignored in older browsers */
   color-scheme: light dark;
+}
+
+/* MANDATORY: Fallback for browsers without light-dark support.
+   Keep it at the top level: browsers that need this fallback may not support CSS nesting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-brand: var(--color-brand-dark);
+  }
 }
 
 button.primary {
