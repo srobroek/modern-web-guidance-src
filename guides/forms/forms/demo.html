@@ -391,7 +391,7 @@
           <!-- Single Name Field -->
           <div class="form-group">
             <label for="fullName">Full Name <span class="required-indicator" aria-hidden="true">*</span></label>
-            <input type="text" id="fullName" name="fullName" autocomplete="name" required minlength="2" aria-required="true">
+            <input type="text" id="fullName" name="fullName" autocomplete="name" enterkeyhint="next" required minlength="2" aria-required="true">
             <span id="nameHint" class="hint">Enter your full name as it appears on official documents.</span>
             <span id="fullNameError" class="error-message" role="alert"></span>
           </div>
@@ -399,14 +399,14 @@
           <!-- Email -->
           <div class="form-group">
             <label for="email">Email Address <span class="required-indicator" aria-hidden="true">*</span></label>
-            <input type="email" id="email" name="email" autocomplete="email" spellcheck="false" required aria-required="true">
+            <input type="email" id="email" name="email" autocomplete="email" enterkeyhint="next" spellcheck="false" required aria-required="true">
             <span id="emailError" class="error-message" role="alert"></span>
           </div>
 
           <!-- Password with Toggle -->
           <div class="form-group password-wrapper">
             <label for="password">Password <span class="required-indicator" aria-hidden="true">*</span></label>
-            <input type="password" id="password" name="password" autocomplete="new-password" required minlength="8" aria-required="true" aria-describedby="passwordHint">
+            <input type="password" id="password" name="password" autocomplete="new-password" enterkeyhint="next" required minlength="8" aria-required="true" aria-describedby="passwordHint">
             <button type="button" id="togglePassword" class="password-toggle" aria-pressed="false" aria-label="Show password" aria-describedby="toggleWarning">
               <svg class="icon-eye" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               <svg class="icon-eye-off" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19.77 19.77 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a19.86 19.86 0 0 1-3.17 4.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -463,7 +463,7 @@
           <!-- Datalist (10+ / Dynamic) -->
           <div class="form-group datalist-wrapper">
             <label for="country">Country</label>
-            <input list="countries" id="country" name="country" autocomplete="country-name" placeholder="Start typing...">
+            <input list="countries" id="country" name="country" autocomplete="country-name" enterkeyhint="next" placeholder="Start typing...">
             <datalist id="countries">
               <option value="United States">
               <option value="Canada">
@@ -517,14 +517,14 @@
           <!-- ZIP (Text with inputmode numeric) -->
           <div class="form-group">
             <label for="zip">ZIP / Postal Code <span class="required-indicator" aria-hidden="true">*</span></label>
-            <input type="text" id="zip" name="zip" autocomplete="postal-code" inputmode="numeric" pattern="[0-9]*" required aria-required="true">
+            <input type="text" id="zip" name="zip" autocomplete="postal-code" inputmode="numeric" enterkeyhint="done" pattern="[0-9]*" required aria-required="true">
             <span id="zipError" class="error-message" role="alert"></span>
           </div>
 
           <!-- Complex Number (Credit Card) as single field -->
           <div class="form-group">
             <label for="ccNumber">Credit Card Number <span class="required-indicator" aria-hidden="true">*</span></label>
-            <input type="text" id="ccNumber" name="ccNumber" autocomplete="cc-number" inputmode="numeric" pattern="[0-9\s]*" required aria-required="true">
+            <input type="text" id="ccNumber" name="ccNumber" autocomplete="cc-number" inputmode="numeric" enterkeyhint="done" pattern="[0-9\s]*" required aria-required="true">
             <span id="ccError" class="error-message" role="alert"></span>
           </div>
         </fieldset>
@@ -532,8 +532,8 @@
 
       <!-- Controls -->
       <div class="button-group">
-        <button type="button" id="prevBtn" class="secondary" style="display: none;" enterkeyhint="previous">Previous</button>
-        <button type="button" id="nextBtn" class="primary" enterkeyhint="next">Next</button>
+        <button type="button" id="prevBtn" class="secondary" style="display: none;">Previous</button>
+        <button type="button" id="nextBtn" class="primary">Next</button>
         <button type="submit" id="submitBtn" class="primary" style="display: none;">Complete Registration</button>
       </div>
     </form>
@@ -726,6 +726,12 @@
     form.addEventListener('submit', (e) => {
       // Prevent default navigation for AJAX
       e.preventDefault();
+
+      // Enter submits the form from any step; before the last step, treat it as Next.
+      if (currentStep < 3) {
+        nextBtn.click();
+        return;
+      }
       
       if (validateStep(3)) {
         // Disable button after valid submission to prevent double-posts
