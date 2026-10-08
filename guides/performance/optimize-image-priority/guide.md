@@ -31,18 +31,20 @@ The `loading=lazy` attribute prevents images from being downloaded at all when s
      fetchpriority="high"
      width="800" height="400">
 
-<!-- Deprioritize initially hidden images above the fold -->
-<!-- Additionally use `loading="lazy"` if there are likely to be many images-->
- <div class="carousel">
-     <img src="/images/gallery-alt.jpg"
-          alt="Gallery Image 1"
-          width="400" height="300">
-     <img src="/images/gallery-alt.jpg"
-          alt="Gallery Image 2"
-          fetchpriority="low"
-          loading="lazy"
-          width="400" height="300">
-<div>
+<!-- Carousel: the first slide is visible, so it keeps the default priority
+     (use fetchpriority="high" instead if this slide is the LCP image).
+     Deprioritize the slides that start hidden. -->
+<!-- Additionally use `loading="lazy"` on hidden slides if there are likely to be many images -->
+<div class="carousel">
+  <img src="/images/gallery-main.jpg"
+       alt="Gallery Image 1"
+       width="400" height="300">
+  <img src="/images/gallery-alt.jpg"
+       alt="Gallery Image 2"
+       fetchpriority="low"
+       loading="lazy"
+       width="400" height="300">
+</div>
 
 <!-- Deprioritize images revealed only after user interaction -->
 <img src="/images/mega-menu-promo.jpg"
