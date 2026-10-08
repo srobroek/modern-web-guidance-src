@@ -656,13 +656,16 @@ describe('buildIssueContent', () => {
     ]);
     const mismatchResult = buildIssueContent('my-use-case', 'desc', ['feature-a'], 'guides/ux/my-use-case', featureMap, makeInventory(), 4);
     assert.strictEqual(mismatchResult.priorityLabel, null);
+    assert.strictEqual(mismatchResult.milestoneNumber, null);
     assert.ok(mismatchResult.issueBody.includes('Related features: #1'));
 
     const matchSecondResult = buildIssueContent('my-use-case', 'desc', ['feature-a', 'feature-b'], 'guides/ux/my-use-case', featureMap, makeInventory(), 4);
     assert.strictEqual(matchSecondResult.priorityLabel, 'P2');
+    assert.strictEqual(matchSecondResult.milestoneNumber, 4);
 
     const nullMilestoneResult = buildIssueContent('my-use-case', 'desc', ['feature-a'], 'guides/ux/my-use-case', featureMap, makeInventory(), null);
     assert.strictEqual(nullMilestoneResult.priorityLabel, null);
+    assert.strictEqual(nullMilestoneResult.milestoneNumber, null);
   });
 
   test('omits related features section when no features have linked issues', () => {

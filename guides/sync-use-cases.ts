@@ -146,7 +146,7 @@ export function buildIssueContent(
       if (!priorityLabel && featureData.priorityLabel && sameMilestone) {
         priorityLabel = featureData.priorityLabel;
       }
-      if (!milestoneNumber && featureData.milestoneNumber) {
+      if (!milestoneNumber && featureData.milestoneNumber && sameMilestone) {
         milestoneNumber = featureData.milestoneNumber;
       }
     }
