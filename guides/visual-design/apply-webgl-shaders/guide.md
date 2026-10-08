@@ -11,13 +11,14 @@ WebGL shaders provide powerful GPU-accelerated visual effects, enabling advanced
 
 ## How to implement
 
-1. Check if HTML-in-Canvas is supported in the browser:
+1. Check if HTML-in-Canvas is supported in the browser, and keep a working path for when it is not (see [Fallback strategies](#fallback-strategies)). Without support, children of a `<canvas>` are fallback content and are not rendered, so the fallback branch must show the HTML some other way:
 
-```
-if ('requestPaint' in HTMLCanvasElement.prototype) {
+```js
+const supportsHtmlInCanvas = 'requestPaint' in HTMLCanvasElement.prototype;
+if (supportsHtmlInCanvas) {
   // Use HTML in Canvas API
 } else {
-  // Use fallback strategy
+  // Use fallback strategy, e.g. canvas.after(htmlContent)
 }
 ```
 
@@ -52,9 +53,11 @@ const options = supportsDevicePixelContentBox
 observer.observe(canvas, options);
 ```
 
-5. Render the HTML content to the canvas inside a `canvas.onpaint` event handler using the `texElementImage2D` method:
+5. Render the HTML content to the canvas inside a `canvas.onpaint` event handler using the `texElementImage2D` method. `gl.RGBA8` is a sized internal format, which WebGL 2 textures accept but WebGL 1 textures do not (they take unsized formats such as `gl.RGBA`), so get the context with `getContext('webgl2')`:
 
 ```js
+const gl = canvas.getContext('webgl2');
+
 canvas.onpaint = () => {
   if (gl.texElementImage2D) {
     try {
@@ -130,15 +133,19 @@ The browser needs to map from the 3D coordinate space into the CSS coordinate sp
   }
   ```
 
-7. [Troubleshooting] If the developer is experiencing a mismatch in the DOM logical layout in 3D even after applying the CSS transform from step 5, check if the developer is experiencing the issue in Chromium 148 or earlier. If that's the case, check if `transform.is2D` is correctly set to false for a 3D DOMMatrix. If not, re-initialize the DOMMatrix which corrects `is2D` to be false before applying the transform to the target HTML element. This issue is fixed in Chromium 149+, and if the developer is experiencing it in newer Chromium versions, the is2D value is not the cause:
+7. [Troubleshooting] If the developer is experiencing a mismatch in the DOM logical layout in 3D even after applying the CSS transform from step 6, check if the developer is experiencing the issue in Chromium 148 or earlier. If that's the case, check if `is2D` is correctly set to false on the 3D DOMMatrix returned by `getElementTransform()`. If not, re-initialize that DOMMatrix, which corrects `is2D` to be false, and apply the re-initialized matrix to the target HTML element. A DOMMatrix with `is2D` set to true serializes as a 2D `matrix()` and drops its 3D components. This issue is fixed in Chromium 149+, and if the developer is experiencing it in newer Chromium versions, the is2D value is not the cause:
 
 ```js
-if (transform.is2D) {
+let computedTransform = canvas.getElementTransform(
+  targetHTMLElement,
+  screenSpaceTransform,
+);
+if (computedTransform.is2D) {
   // Workaround for Chromium bug https://crbug.com/512171941
-  // affecting Chrome versions under 149 where `transform.is2D`
-  // is incorrectly true for a 3D DOMMatrix. The assignment
-  // below re-initializes the DOMMatrix which corrects is2D to be false.
-  transform = DOMMatrix.fromFloat64Array(transform.toFloat64Array());
+  // affecting Chrome versions under 149 where `is2D`
+  // is incorrectly true for a 3D DOMMatrix. Re-creating the matrix
+  // from its 16 values yields a 3D DOMMatrix with is2D false.
+  computedTransform = DOMMatrix.fromFloat64Array(computedTransform.toFloat64Array());
 }
 targetHTMLElement.style.transform = computedTransform.toString();
 ```
@@ -155,27 +162,30 @@ targetHTMLElement.style.transform = computedTransform.toString();
 
 <script>
   const canvas = document.getElementById("canvas");
-  const gl = canvas.getContext("webgl");
   const uiElement = document.getElementById("ui-element");
+  const gl = canvas.getContext("webgl2");
 
-  // Setup WebGL texture...
-  const texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
+  if (!('requestPaint' in HTMLCanvasElement.prototype) || !gl || !gl.texElementImage2D) {
+    // Fallback: without HTML-in-Canvas or WebGL 2, the canvas children are not
+    // rendered. Show the UI as regular DOM, without the shader effect.
+    canvas.after(uiElement);
+    canvas.hidden = true;
+  } else {
+    // Setup WebGL texture...
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
 
-  canvas.onpaint = () => {
-    // 1. Update texture with HTML content
-    if (gl.texElementImage2D) {
+    canvas.onpaint = () => {
+      // 1. Update texture with HTML content
       try {
         gl.texElementImage2D(gl.TEXTURE_2D, gl.RGBA8, uiElement);
       } catch (err) {
         console.error('texElementImage2D copy failed:', err);
       }
-    }
 
-    // ... Render your 3D scene here, calculating htmlElementMVP matrix ...
+      // ... Render your 3D scene here, calculating htmlElementMVP matrix ...
 
-    // 2. Sync DOM position with 3D scene
-    if (canvas.getElementTransform) {
+      // 2. Sync DOM position with 3D scene
       const mvpDOM = new DOMMatrix(Array.from(htmlElementMVP));
 
       // Recalculate the DPR compensation mapping
@@ -201,8 +211,8 @@ targetHTMLElement.style.transform = computedTransform.toString();
         screenSpaceTransform,
       );
       uiElement.style.transform = computedTransform.toString();
-    }
-  };
+    };
+  }
 </script>
 ```
 
@@ -221,26 +231,32 @@ targetHTMLElement.style.transform = computedTransform.toString();
 
 {{ BASELINE_STATUS("canvas-html") }}
 
-The HTML-in-Canvas API is not currently supported in all modern browsers, thus a fallback strategy is typically required.
+HTML-in-Canvas is experimental. The explainer lists only a Chromium implementation, behind the `chrome://flags/#canvas-draw-element` flag; an origin trial ran in Chrome 148 to 150. The API is still changing: the current explainer replaces `layoutsubtree` with `content="drawable"`, `texElementImage2D()` with `texElementSubImage2D()`, and the two-argument `getElementTransform()` with `updateElementGeometry()`. This guide shows the origin-trial API, so check the [explainer](https://github.com/WICG/html-in-canvas) before you ship.
 
-However, given the improved performance benefits of this API, HTML-in-Canvas should be used if the browser supports it.
+Treat HTML-in-Canvas as a progressive enhancement, not as the default rendering path. The page MUST work without it, and the fallback branch MUST run before any shader setup that assumes the HTML is drawn into the canvas.
 
-The fallback strategy depends on the use case. For example, for an interactive HTML content in canvas, if HTML-in-Canvas is not supported, place the HTML content on top of the canvas using CSS.
+The fallback strategy depends on the use case. For example, for an interactive HTML content in canvas, if HTML-in-Canvas is not supported, place the HTML content on top of the canvas using CSS, or after the canvas as in the example above. Without support, children of the canvas are fallback content and are not rendered.
 
 ### HTML-in-Canvas polyfill
 
-Use the following polyfill script to mimic the HTML-in-Canvas API in browsers that do not support it.
+The third-party `three-html-render` package (MIT, 0.1.x, first published in April 2026) emulates the API in browsers that do not support it. It moves the canvas children into an offscreen host element and rasterizes them through an SVG `foreignObject` image, so rendering, performance and input handling differ from the native API; read its known limitations before you rely on it. Pin an exact version.
 
-1. Install or embed the library:
-
-```
-# Install
-npm install three-html-render
-```
+1. Install the library and call `installHtmlInCanvasPolyfill()` (it does nothing when the native API is present):
 
 ```
-# Embed
-<script src="https://cdn.jsdelivr.net/npm/three-html-render/dist/polyfill.js"></script>
+npm install --save-exact three-html-render@0.1.2
 ```
 
-2. Run the `installHtmlInCanvasPolyfill()` method to translate HTML-in-Canvas.
+```js
+import { installHtmlInCanvasPolyfill } from 'three-html-render/polyfill';
+
+installHtmlInCanvasPolyfill();
+```
+
+2. Or, without a bundler, load the pinned build with Subresource Integrity. This classic script installs the polyfill as soon as it loads:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/three-html-render@0.1.2/dist/polyfill.js"
+  integrity="sha384-MpD3wWXNXVuH2lbj5VNsH4o1Fn7ha/39AC9BJBqZjICRHgcPkedcfFScYS4sGz9p"
+  crossorigin="anonymous"></script>
+```
