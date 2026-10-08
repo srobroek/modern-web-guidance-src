@@ -32,7 +32,6 @@ Onboarding tours require overlays that persist while users interact with the hig
 }
 
 #tour-step {
-  popover: manual;
   position-anchor: --feature-target;
   position-area: right center;
   inset: auto;
@@ -52,6 +51,19 @@ tourStep.showPopover();
 tourStep.querySelector('button').focus();
 ```
 
+If you load the popover polyfill (see Fallback strategies), **MANDATORY:** await its import before calling `showPopover()`. In browsers without native popover support, `showPopover()` does not exist until the polyfill has loaded, so calling it earlier throws a `TypeError`.
+
+```html
+<script type="module">
+  if (!("popover" in HTMLElement.prototype)) {
+    await import("https://unpkg.com/@oddbird/popover-polyfill@0.7.3/dist/popover.min.js");
+  }
+  const tourStep = document.getElementById('tour-step');
+  tourStep.showPopover();
+  tourStep.querySelector('button').focus();
+</script>
+```
+
 ### Implementation Guidelines
 
 * **MANDATORY:** Use `popover="manual"` to prevent the tour step from closing accidentally during user interaction.
@@ -66,17 +78,19 @@ tourStep.querySelector('button').focus();
 
 #### anchor-positioning
 
-{{ BASELINE_STATUS("anchor-positioning") }}
+{{ BASELINE_STATUS("anchor-positioning", "css.properties.anchor-name") }}
 
 To support browsers without anchor positioning, you can choose between using a polyfill or a pure CSS fallback.
 
 ##### Option 1: Polyfill Fallback
-The `@oddbird/css-anchor-positioning` polyfill can be used to emulate anchor positioning. It does not support implicit anchors, so you MUST add explicit anchor names to the trigger. Additionally, `position-area` is not supported on popovers by the polyfill, so you MUST use `anchor()` on the desired insets instead of `position-area`.
+The `@oddbird/css-anchor-positioning` polyfill can be used to emulate anchor positioning. It does not support implicit anchors, so you MUST add explicit anchor names to the trigger. Additionally, the polyfill emulates `position-area` on popovers by wrapping the target and moving its insets onto the wrapper, which behaves differently from native positioning, so you MUST use `anchor()` on the desired insets instead of `position-area`.
+
+**MANDATORY:** Pin the polyfill to an exact version. An unversioned or `@latest` CDN URL runs whatever is published next, without review.
 
 ```html
 <script type="module">
   if (!CSS.supports('anchor-name: --foo')) {
-    await import("https://unpkg.com/@oddbird/css-anchor-positioning");
+    await import("https://unpkg.com/@oddbird/css-anchor-positioning@0.10.2/dist/css-anchor-positioning.js");
   }
 </script>
 ```
@@ -90,7 +104,7 @@ The `@oddbird/css-anchor-positioning` polyfill can be used to emulate anchor pos
 ```
 
 ##### Option 2: Non-Polyfill CSS Fallback
-If you prefer not to use a polyfill, you can default the tooltip to a fixed position at the bottom of the viewport using `@supports not`.
+If you prefer not to use a polyfill, you can default the tour step to a fixed position at the bottom of the viewport using `@supports not`.
 
 ```css
 @supports not (anchor-name: --foo) {
