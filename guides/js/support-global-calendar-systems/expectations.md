@@ -13,3 +13,5 @@
 - The implementation MUST use `Temporal.PlainDate.compare()` (or equivalent Temporal compare method) to compare dates instead of manual property comparison.
 - The implementation MUST account for era names when formatting dates in systems that rely on eras (e.g., Japanese or Buddhist calendar systems) using `toLocaleString()`.
 - The implementation MUST use `daysInMonth` when checking month invariants or doing day iterations instead of hardcoding fixed values like 30 or 31.
+- The implementation MUST read a date's calendar through the `calendarId` string property, not the removed `calendar.id` object form.
+- The implementation MUST NOT call `withCalendar()` with a calendar ID that failed the support check; it MUST reuse the fallback calendar instead.

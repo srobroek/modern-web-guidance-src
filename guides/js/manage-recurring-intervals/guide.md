@@ -14,7 +14,7 @@ The `Temporal` API provides a clean solution with `Temporal.PlainDate` and its `
 ## How to Implement
 
 1. **MANDATORY:** **Parse the starting date**: Use `Temporal.PlainDate.from()` to create a date object.
-2. **MANDATORY:** **Add the duration**: Use the `.add()` method with a duration object (e.g., `{ months: 1 }`).
+2. **MANDATORY:** **Add the duration to the anchor date**: Compute each period as `anchor.add({ months: n })` from the original start date (e.g., `{ months: 1 }`, `{ months: 2 }`). Do not chain `.add()` onto the previous result, because a clamped day is carried into every later period.
 3. **OPTIONAL:** **Specify overflow behavior**: Use the `overflow` option to control how invalid dates (like Feb 31) are handled.
     - `'constrain'` (default): Clamps to the last valid day of the month.
     - `'reject'`: Throws a `RangeError`.
@@ -30,11 +30,14 @@ const startDate = Temporal.PlainDate.from('2024-01-31');
 const nextBillingDate = startDate.add({ months: 1 });
 console.log(`Next billing: ${nextBillingDate.toString()}`); // 2024-02-29
 
-// 3. Add 1 month to Feb 29
-// Feb 29 + 1 month -> Mar 29
-// Note: Day is preserved if valid, otherwise constrained.
-const thirdBillingDate = nextBillingDate.add({ months: 1 });
-console.log(`Third billing: ${thirdBillingDate.toString()}`); // 2024-03-29
+// 3. Compute later periods from the anchor date, not from the previous result.
+// Jan 31 + 2 months -> Mar 31: the anchor's day is restored when the month has it.
+const thirdBillingDate = startDate.add({ months: 2 });
+console.log(`Third billing: ${thirdBillingDate.toString()}`); // 2024-03-31
+
+// Chaining drifts: Feb 29 + 1 month -> Mar 29, and every later cycle stays on the 29th.
+const driftedDate = nextBillingDate.add({ months: 1 });
+console.log(`Chained (drifted): ${driftedDate.toString()}`); // 2024-03-29
 
 // Example with 'reject' strategy
 try {
@@ -48,31 +51,11 @@ try {
 ## Strategic Implementation & Best Practices
 
 - **DO** use `Temporal.PlainDate` for calculations that do not depend on specific times or time zones (like calendar dates or billing cycles).
-- **DO** understand the default `constrain` behavior. It is usually what users expect for billing (e.g., Jan 31 -> Feb 28/29 -> Mar 28/29).
+- **DO** understand the default `constrain` behavior. Anchored to Jan 31, it gives Feb 28/29, Mar 31, Apr 30: each period falls on the anchor day, or the month's last day when the month is shorter.
+- **DO NOT** chain `.add({ months: 1 })` onto the previous billing date. After one clamp (Jan 31 -> Feb 29), the chain stays on the 29th forever (Mar 29, Apr 29, ...). Store the anchor date and the cycle number instead.
 - **DO NOT** modify instances directly; `Temporal` objects are **immutable**. Operations return a new instance.
 - **DO** use `overflow: 'reject'` if you need to enforce that the resulting date must exist in the calendar and handle failures explicitly.
 
-### Fallback strategies
+## Fallback Strategy
 
-{{ BASELINE_STATUS("temporal") }}
-
-For browsers that do not yet support the native `Temporal` API, use feature detection and a polyfill. The standard reference polyfill is `@js-temporal/polyfill`.
-
-```javascript
-// Check if Temporal is supported natively
-(async () => {
-  if (typeof Temporal === 'undefined') {
-    // Load the polyfill conditionally
-    const module = await import("https://esm.sh/@js-temporal/polyfill");
-    globalThis.Temporal = module.Temporal;
-    // Extend Date.prototype if needed
-    Date.prototype.toTemporalInstant = module.toTemporalInstant;
-    initializeApp();
-  }
-})();
-
-function initializeApp() {
-  const date = Temporal.PlainDate.from('2024-01-31');
-  console.log(date.add({ months: 1 }).toString());
-}
-```
+{{ FEATURE_FALLBACKS("temporal") }}

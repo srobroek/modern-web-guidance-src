@@ -51,7 +51,7 @@ function extendDeadlineGood() {
 
 ## Strategic Implementation & Best Practices
 
-- **DO** use `Temporal` for any date/time values stored in reactive state to benefit from its immutability.
+- **DO** use `Temporal` for date/time values in reactive state when you also need its arithmetic, time zone, or calendar features. If you only need a new reference on each update, replacing the `Date` with a new instance (`new Date(old.getTime() + 60 * 60 * 1000)`) also works without a polyfill.
 - **DO** use the most specific Temporal type for your use case (e.g., `Temporal.PlainDate` if you only need the calendar date) to avoid unnecessary complexity.
 - **DO NOT** mutate `Date` objects in place when they are part of a component's state.
 - **DO** ensure you handle environments without native support by conditionally loading a polyfill.
@@ -60,18 +60,18 @@ function extendDeadlineGood() {
 
 {{ BASELINE_STATUS("temporal") }}
 
-Since the `Temporal` API is a newer feature and may not be supported in all browsers, you should feature-detect it and conditionally load a polyfill if needed.
+Since the `Temporal` API is a newer feature and may not be supported in all browsers, you should feature-detect it and conditionally load a polyfill if needed. Start your app only after `Temporal` is available.
 
 ```html
-<!-- Conditionally load the Temporal polyfill only if not natively supported -->
-<script>
+<!-- type="module" is required: top-level await is a SyntaxError in a classic script. -->
+<script type="module">
   if (typeof Temporal === "undefined") {
-    try {
-      const module = await import("https://esm.sh/@js-temporal/polyfill");
-      globalThis.Temporal = module.Temporal;
-    } catch (e) {
-      console.error("Failed to load Temporal polyfill:", e);
-    }
+    // Pin an exact version, or import @js-temporal/polyfill through your bundler.
+    const module = await import("https://esm.sh/@js-temporal/polyfill@0.5.1");
+    globalThis.Temporal = module.Temporal;
   }
+  // Import app code after Temporal exists, so its top-level Temporal calls cannot run first.
+  // "./app.js" is an example path for your application entry module.
+  await import("./app.js");
 </script>
 ```

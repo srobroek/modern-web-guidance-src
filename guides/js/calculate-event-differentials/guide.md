@@ -47,8 +47,12 @@ const end = endDate.toPlainDateTime(endTime).toZonedDateTime(tz);
 const timeActive = now.since(start, { largestUnit: 'year' });
 const timeRemaining = now.until(end, { largestUnit: 'year' });
 
-console.log(`Active: ${timeActive.days} days, ${timeActive.hours} hours`);
-console.log(`Remaining: ${timeRemaining.days} days, ${timeRemaining.hours} hours`);
+// Read every unit up to the largestUnit you requested. With largestUnit: 'year',
+// a span of 1 year, 2 months and 5 days has days === 5, so logging only .days
+// and .hours would drop the years and months.
+const format = (d) => `${d.years} years, ${d.months} months, ${d.days} days, ${d.hours} hours`;
+console.log(`Active: ${format(timeActive)}`);
+console.log(`Remaining: ${format(timeRemaining)}`);
 
 // 4. Compare dates
 const isExpired = Temporal.ZonedDateTime.compare(now, end) > 0;

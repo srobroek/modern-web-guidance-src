@@ -42,12 +42,14 @@ const targetDate = isCalendarSupported(calendarId)
   ? isoDate.withCalendar(calendarId)
   : isoDate; // Fallback to ISO if not supported
 
-if (targetDate.calendar.id !== calendarId) {
+// Read calendarId: Temporal dates expose the calendar as a string ID.
+// The older `date.calendar.id` object form was removed from the spec and is undefined.
+if (targetDate.calendarId !== calendarId) {
   console.warn(`Calendar ${calendarId} not supported; falling back to ISO 8601`);
 }
 
 // 4. Log properties specific to the calendar
-console.log(`Calendar: ${targetDate.calendar.id}`);
+console.log(`Calendar: ${targetDate.calendarId}`);
 console.log(`Year: ${targetDate.year}`);
 console.log(`Month Code: ${targetDate.monthCode}`); // Stable across leap years
 
@@ -57,13 +59,17 @@ for (let m = 1; m <= targetDate.monthsInYear; m++) {
 }
 
 // 6. Compare dates within the same calendar
-const today = Temporal.Now.plainDateISO().withCalendar(calendarId);
+// Reuse targetDate's calendar so the ISO fallback is honored here too:
+// withCalendar() throws a RangeError for an unsupported calendar ID.
+const today = Temporal.Now.plainDateISO().withCalendar(targetDate.calendarId);
 const comparison = Temporal.PlainDate.compare(targetDate, today);
 const relative = comparison < 0 ? 'Past' : comparison > 0 ? 'Future' : 'Today';
 console.log(`Timeline: ${relative}`);
 
 // 7. Format for display using toLocaleString
-const localizedDisplay = targetDate.toLocaleString('en-u-ca-hebrew', {
+// Put the active calendar in the options so the ISO fallback formats as ISO too.
+const localizedDisplay = targetDate.toLocaleString('en', {
+  calendar: targetDate.calendarId,
   day: 'numeric',
   month: 'long',
   year: 'numeric'
@@ -100,8 +106,9 @@ async function getTemporal() {
   }
   
   try {
-    // Load polyfill dynamically from CDN
-    const module = await import('https://esm.sh/@js-temporal/polyfill');
+    // Load the polyfill dynamically. Pin an exact version on a CDN, or
+    // import @js-temporal/polyfill through your bundler instead.
+    const module = await import('https://esm.sh/@js-temporal/polyfill@0.5.1');
     globalThis.Temporal = module.Temporal;
     return module.Temporal;
   } catch (e) {
@@ -110,3 +117,5 @@ async function getTemporal() {
   }
 }
 ```
+
+Call `await getTemporal()` before any code that uses `Temporal`, on both the native and the polyfilled path.

@@ -1,6 +1,7 @@
 - The implementation MUST feature-detect the `Temporal` API using `typeof Temporal === 'undefined'` before usage.
 - The implementation MUST conditionally load a Temporal polyfill only if native support is absent.
 - The implementation MUST manually assign the loaded polyfill to `globalThis.Temporal` to ensure it is globally accessible.
+- The implementation MUST run its Temporal-dependent startup logic only after `Temporal` is available, in both browsers with native support and browsers that load the polyfill.
 - The implementation MUST use `Temporal.PlainYearMonth` for modeling concepts that only have a year and a month (like credit card expiry).
 - The implementation MUST use `Temporal.PlainMonthDay` for modeling annual recurring events without a specific year (like birthdays).
 - The implementation MUST use `Temporal.PlainTime` for modeling time of day without a date (like daily alarms).

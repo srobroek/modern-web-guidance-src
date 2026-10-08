@@ -15,9 +15,9 @@ The `Temporal` API provides `Temporal.ZonedDateTime` to represent a date and tim
 
 To coordinate global events and handle potential DST conflicts:
 
-1. **MANDATORY:** **Create a ZonedDateTime**: Use `Temporal.ZonedDateTime.from()` to create a time-zone-aware date-time object.
-2. **MANDATORY:** **Handle Ambiguity**: Use the `disambiguation` option to control behavior when a time is ambiguous or does not exist (e.g., during clock changes).
-3. **MANDATORY:** **Convert Time Zones**: Use `.withTimeZone()` to see the equivalent time in another location.
+1. **Create a ZonedDateTime**: Use `Temporal.ZonedDateTime.from()` to create a time-zone-aware date-time object.
+2. **Handle Ambiguity**: Use the `disambiguation` option to control behavior when a time is ambiguous or does not exist (e.g., during clock changes).
+3. **Convert Time Zones**: Use `.withTimeZone()` to see the equivalent time in another location.
 
 ### Example: Scheduling and Conflict Detection
 
@@ -28,22 +28,25 @@ const time = "02:30"; // This time is skipped in New York during Spring Forward
 const timeZone = "America/New_York";
 const inputStr = `${date}T${time}[${timeZone}]`;
 
-// 2. Detect conflicts using 'reject'
+// 2. Resolve the time safely using 'compatible' (default)
+// 'compatible' will resolve to a valid time even if skipped or repeated.
+// Parsing here first means a malformed input string throws now, so the
+// conflict check below cannot mistake it for a DST conflict.
+const hostTime = Temporal.ZonedDateTime.from(inputStr, { disambiguation: 'compatible' });
+console.log(`Resolved time: ${hostTime.toString()}`);
+
+// 3. Detect conflicts using 'reject'
 let hasConflict = false;
 try {
   // 'reject' throws RangeError if the time is ambiguous or does not exist
   Temporal.ZonedDateTime.from(inputStr, { disambiguation: 'reject' });
 } catch (e) {
-  if (e instanceof RangeError) {
-    hasConflict = true;
-    console.log("This time falls in a DST transition gap or overlap.");
-  }
+  // The input already parsed above, so a RangeError here is a DST gap or
+  // overlap. Rethrow any other error instead of swallowing it.
+  if (!(e instanceof RangeError)) throw e;
+  hasConflict = true;
+  console.log("This time falls in a DST transition gap or overlap.");
 }
-
-// 3. Resolve the time safely using 'compatible' (default)
-// 'compatible' will resolve to a valid time even if skipped or repeated
-const hostTime = Temporal.ZonedDateTime.from(inputStr, { disambiguation: 'compatible' });
-console.log(`Resolved time: ${hostTime.toString()}`);
 
 // 4. Convert to another time zone (e.g., Tokyo)
 const tokyoTime = hostTime.withTimeZone("Asia/Tokyo");
@@ -58,27 +61,6 @@ console.log(`Tokyo time: ${tokyoTime.toString()}`);
 -   **DO NOT** use `Temporal.PlainDateTime` for global events, as it does not carry time zone information and cannot account for DST changes.
 -   **DO** use `.withTimeZone()` to calculate the equivalent time in other locations without mutating the original object (Temporal objects are immutable).
 
-### Fallback strategies
+## Fallback Strategy
 
-{{ BASELINE_STATUS("temporal") }}
-
-For environments without native `Temporal` support, you must conditionally load the `@js-temporal/polyfill`.
-
-```javascript
-// Check if Temporal is supported natively
-(async () => {
-  if (typeof Temporal === 'undefined') {
-    // Load the polyfill conditionally
-    const module = await import("https://esm.sh/@js-temporal/polyfill");
-    globalThis.Temporal = module.Temporal;
-    // Extend Date.prototype if needed
-    Date.prototype.toTemporalInstant = module.toTemporalInstant;
-    initializeApp();
-  }
-})();
-
-function initializeApp() {
-  // Your app logic here
-  console.log("Temporal is ready:", typeof Temporal);
-}
-```
+{{ FEATURE_FALLBACKS("temporal") }}

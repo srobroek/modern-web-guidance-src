@@ -50,7 +50,7 @@ console.log(formatter.format(balanced));
 
 If `Intl.DurationFormat` is not supported, you should feature-detect it and fall back to manual string construction by extracting the balanced duration properties.
 
-* **Guidance:** Use `typeof Intl.DurationFormat !== 'undefined'` to check for support. If unsupported, extract properties like `.hours` and `.minutes` from the balanced `Temporal.Duration` object and combine them, handling pluralization properly.
+* **Guidance:** Use `typeof Intl.DurationFormat !== 'undefined'` to check for support. If unsupported, extract properties like `.hours` and `.minutes` from the balanced `Temporal.Duration` object and combine them, handling pluralization properly. Omit zero-valued units, as `Intl.DurationFormat` does by default, so 30 minutes reads "30 minutes" rather than "0 hours and 30 minutes".
 
 ```javascript
 // 3. Format the display string
@@ -61,12 +61,12 @@ if (typeof Intl.DurationFormat !== 'undefined') {
   console.log(formatter.format(balanced));
 } else {
   // Fallback manual formatting (assuming duration is already balanced)
-  const h = balanced.hours;
-  const m = balanced.minutes;
+  const parts = [];
+  // Skip zero-valued units, matching Intl.DurationFormat's default display.
+  if (balanced.hours !== 0) parts.push(`${balanced.hours} hour${balanced.hours === 1 ? '' : 's'}`);
+  if (balanced.minutes !== 0) parts.push(`${balanced.minutes} minute${balanced.minutes === 1 ? '' : 's'}`);
 
-  const hoursStr = `${h} hour${h === 1 ? '' : 's'}`;
-  const minutesStr = `${m} minute${m === 1 ? '' : 's'}`;
-
-  console.log(`${hoursStr} and ${minutesStr}`);
+  // An all-zero duration still needs a visible value.
+  console.log(parts.length > 0 ? parts.join(' and ') : '0 minutes');
 }
 ```

@@ -1,5 +1,6 @@
 - The implementation MUST feature-detect the `Temporal` API using `typeof Temporal === 'undefined'` or `!globalThis.Temporal` before usage.
 - The implementation MUST conditionally load a Temporal polyfill only if native support is absent.
+- The implementation MUST load the polyfill from a module script (`type="module"`) or async function when it uses `await`, and MUST start Temporal-dependent code only after `Temporal` is available.
 - The implementation MUST use `Temporal.PlainDateTime` (or another specific Temporal type like `Temporal.PlainDate`) as the value in reactive state to ensure immutability.
 - The implementation MUST update the reactive state by calling methods that return a new instance (such as `.add()`, `.subtract()`, or `.with()`) rather than mutating the existing object.
 - The implementation MUST assign the new Temporal instance reference to the state to trigger a UI update in reference-diffing systems.

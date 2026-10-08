@@ -1,5 +1,6 @@
 - The implementation MUST feature-detect the `Temporal` API before usage to ensure compatibility.
 - The implementation MUST conditionally load the Temporal polyfill only if native support is absent.
+- The implementation MUST run its Temporal-dependent startup logic only after `Temporal` is available, in both browsers with native support and browsers that load the polyfill.
 - The implementation MUST ensure the Temporal API is available globally if the application logic relies on the global `Temporal` object.
 - The implementation MUST use `Temporal.ZonedDateTime` as the primary type for scheduling and managing events bound to a specific geographical IANA time zone.
 - The implementation MUST use the `disambiguation` option in `Temporal.ZonedDateTime.from()` to handle potential DST transition conflicts (skipped or repeated hours).
@@ -8,3 +9,4 @@
 - The implementation MUST use the `.withTimeZone()` method to convert a `Temporal.ZonedDateTime` instance to another time zone.
 - The implementation MUST NOT use `Temporal.PlainDateTime` for scheduling global events that require time zone awareness and DST safety.
 - The implementation MUST NOT attempt to modify `Temporal` instances directly, as they are immutable.
+- The implementation MUST treat only a `RangeError` from `disambiguation: 'reject'` as a DST conflict, and MUST NOT silently swallow other errors.
