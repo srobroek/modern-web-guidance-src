@@ -54,24 +54,11 @@ Version [X.Y.Z] — [Brief changelog for latest version]
 
 ### The Implementation-Detail Rule
 
-**Never describe how the extension is built.** Potential users are not developers evaluating your stack — they want to know what the extension does for them.
-
-Strip all of the following from every piece of copy:
-
-- Web API names: `MutationObserver`, `IntersectionObserver`, `Service Worker`, `Shadow DOM`, `IndexedDB`, `WebSockets`
-- Chrome API names: `chrome.storage`, `declarativeNetRequest`, `chrome.scripting`, `offscreen document`
-- Framework/library names: React, custom elements, Lit, Webpack, TypeScript
-- Architecture descriptions: "background processing", "event-driven", "declarative"
-
-**Transform every implementation sentence into a user benefit:**
-
-| Before (implementation) | After (user benefit) |
-|-------------------------|----------------------|
-| "Uses a MutationObserver to detect page changes" | "Automatically detects new content as you browse" |
-| "Built with custom elements and Shadow DOM" | "Works seamlessly without affecting page styles" |
-| "Powered by a service worker" | "Runs quietly in the background" |
-| "Your settings are synced via chrome.storage.sync" | "Your settings sync across all your devices" |
-| "Implements declarativeNetRequest for filtering" | "Blocks ads and trackers without reading your page content" |
+Describe what the extension does for the user, not how it is built. The before/after
+examples live in the store-listing section of `SKILL.md`; apply them to every piece of copy.
+For general-audience extensions, strip Web API, Chrome API, framework, and architecture
+names. Developer tools may name the technologies their users work with (for example,
+"Inspect Shadow DOM trees"), as long as each sentence still states a benefit.
 
 ### Why This Structure Works
 
@@ -196,6 +183,10 @@ When an extension is rejected:
 
 - First submission: typically 1–3 business days, can be longer
 - Updates to existing extensions: usually faster, often within 24 hours
-- Expedited review: not officially available; maintaining a clean track record helps
+- Skipping review: an update to an extension that has `declarativeNetRequest` as a
+  required permission can skip review when it only changes files referenced in
+  `rule_resources` with safe static rules (no added or removed rulesets, no listing
+  changes, version bumped). Opt in with "I would like to skip review" when submitting;
+  such updates usually go live within minutes. Other updates go through normal review.
 - Deferred publishing: you can choose to publish manually after review passes,
   giving you control over timing. Must publish within 30 days of approval.

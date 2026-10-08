@@ -44,8 +44,10 @@ are optional but improve listing quality and approval odds.
 
 
 **Category** [REQUIRED]
-<!-- Pick one: Accessibility, Blogging, Developer Tools, Fun, News & Weather,
-     Photos, Productivity, Search Tools, Shopping, Social & Communication, Sports -->
+<!-- Pick one: Accessibility, Art & Design, Communication, Developer Tools, Education,
+     Entertainment, Functionality & UI, Games, Household, Just for Fun, News & Weather,
+     Privacy & Security, Shopping, Social Media & Networking, Tools, Travel, Well-being,
+     Workflow & Planning -->
 
 
 **Single Purpose** [REQUIRED]
@@ -124,9 +126,10 @@ are optional but improve listing quality and approval odds.
 
 ## Privacy Policy
 
-**Privacy Policy URL** [REQUIRED]
+**Privacy Policy URL** [REQUIRED if the extension handles any user data; RECOMMENDED otherwise]
 
-<!-- Host this at a publicly accessible URL. GitHub Pages, your website, or a
+<!-- Required whenever the extension handles user data (any "Yes" in the Data Collection
+     table above). Host this at a publicly accessible URL. GitHub Pages, your website, or a
      Notion page all work. See references/webstore/privacy-policy.md for a template. -->
 
 

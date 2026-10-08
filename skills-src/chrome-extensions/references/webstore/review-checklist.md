@@ -7,15 +7,17 @@ corresponds to a common rejection reason or publishing failure.
 
 - [ ] **manifest_version is 3** — Manifest V2 is no longer accepted for new submissions.
 - [ ] **Version bumped** — CWS rejects uploads with a version ≤ the currently published
-      version. Use semver: bump patch for fixes, minor for features, major for breaking
-      changes.
+      version. `version` is one to four dot-separated integers (0–65535, no leading
+      zeros, not all zero), compared left to right. Semver prerelease or build suffixes
+      such as `1.2.0-beta` are invalid; put display labels in `version_name`.
 - [ ] **Name matches CHROMEWEBSTORE.md** — The `name` field in manifest.json must exactly
       match what you put in the store listing.
 - [ ] **Description in manifest ≤ 132 chars** — This is the short description shown in
       chrome://extensions. It should match or be close to your CWS short description.
-- [ ] **No unnecessary files in ZIP** — Exclude: `.git/`, `node_modules/`, `.env`,
-      `*.map`, test files, build configs, `CHROMEWEBSTORE.md` itself, `README.md`,
-      `.DS_Store`, `thumbs.db`. Use a build script or `.cws-ignore`-style exclusion.
+- [ ] **ZIP contains only runtime files** — Package an explicit allowlist (or a build
+      output directory that holds only runtime files), never the whole project root. A
+      denylist misses nested `.env.*` files, the private signing key (`*.pem`), source
+      maps, `.git/`, and `node_modules/`. Inspect the archive listing before uploading.
 - [ ] **ZIP under 2GB** — Maximum package size. Most extensions should be under 10MB.
 - [ ] **No absolute file paths** — All paths in manifest.json must be relative.
 
@@ -61,8 +63,9 @@ corresponds to a common rejection reason or publishing failure.
 
 - [ ] **Data disclosure form matches reality** — The CWS data use disclosure checkboxes
       must accurately reflect what the extension code actually does. Mismatch = rejection.
-- [ ] **Privacy policy URL is live** — Visit the URL yourself. Confirm it loads and
-      contains an actual privacy policy, not a 404 or placeholder.
+- [ ] **Privacy policy URL is live** — Required when the extension handles any user data.
+      Visit the URL yourself. Confirm it loads and contains an actual privacy policy,
+      not a 404 or placeholder.
 - [ ] **Privacy policy matches disclosure** — The text of the policy must be consistent
       with what you declared in the disclosure form.
 - [ ] **chrome.storage.sync disclosed** — If you use `chrome.storage.sync`, data is
@@ -99,47 +102,34 @@ corresponds to a common rejection reason or publishing failure.
 
 ## Packaging Script
 
-To create a clean ZIP for submission, use a script like:
+To create a clean ZIP for submission, package an explicit allowlist of runtime files:
 
 ```bash
 #!/bin/bash
-# package-extension.sh — Creates a clean ZIP for Chrome Web Store submission
+# package-extension.sh — Creates a clean ZIP for Chrome Web Store submission.
+# Ships an explicit allowlist. Never zip the project root: a denylist silently picks up
+# new secrets such as .env.local, nested .env.* files, or the *.pem key used to pack.
+set -euo pipefail
 
 EXTENSION_NAME="my-extension"
-VERSION=$(node -p "require('./manifest.json').version")
-OUTPUT="${EXTENSION_NAME}-v${VERSION}.zip"
+# Directory that holds manifest.json. With a bundler, use its output directory (e.g. dist).
+SRC_DIR="dist"
+# Every runtime file or directory manifest.json and your pages reference, relative to SRC_DIR.
+INCLUDE=(manifest.json background.js popup icons _locales)
 
-# Remove old package
+VERSION=$(node -p "require('./${SRC_DIR}/manifest.json').version")
+OUTPUT="$PWD/${EXTENSION_NAME}-v${VERSION}.zip"
+
 rm -f "$OUTPUT"
 
-# Create ZIP excluding dev files
-zip -r "$OUTPUT" . \
-  -x ".git/*" \
-  -x "node_modules/*" \
-  -x ".env" \
-  -x "*.map" \
-  -x "tests/*" \
-  -x "__tests__/*" \
-  -x "*.test.*" \
-  -x "*.spec.*" \
-  -x ".eslintrc*" \
-  -x ".prettierrc*" \
-  -x "tsconfig.json" \
-  -x "package.json" \
-  -x "package-lock.json" \
-  -x "webpack.config.*" \
-  -x "vite.config.*" \
-  -x "rollup.config.*" \
-  -x "CHROMEWEBSTORE.md" \
-  -x "README.md" \
-  -x "CHANGELOG.md" \
-  -x ".DS_Store" \
-  -x "Thumbs.db" \
-  -x "*.sh" \
-  -x "store-assets/*"
+# manifest.json must sit at the ZIP root, so zip from inside SRC_DIR.
+# The -x patterns are a second line of defense inside allowlisted directories.
+(cd "$SRC_DIR" && zip -r "$OUTPUT" "${INCLUDE[@]}" \
+  -x "*.pem" -x ".env*" -x "*/.env*" -x "*.map" -x "*.DS_Store")
 
-echo "Packaged: $OUTPUT ($(du -h "$OUTPUT" | cut -f1))"
+# Review exactly what will be uploaded.
+unzip -l "$OUTPUT"
 ```
 
-Customize the exclusion list for your project. The key principle: ship only what Chrome
-needs to run the extension.
+Edit `INCLUDE` whenever you add a runtime file. The key principle: ship only what Chrome
+needs to run the extension, and list it explicitly.
