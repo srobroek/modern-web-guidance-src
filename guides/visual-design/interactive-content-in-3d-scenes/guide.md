@@ -14,13 +14,14 @@ The HTML-in-Canvas API allows rendering real DOM directly inside a canvas elemen
 ### WebGL and WebGPU
 When using WebGL or WebGPU, follow these steps:
 
-1. Check if HTML-in-Canvas is supported in the browser:
+1. Check if HTML-in-Canvas is supported in the browser, and keep a working path for when it is not (see [Fallback strategies](#fallback-strategies)). Without support, children of a `<canvas>` are fallback content and are not rendered, so the fallback branch must show the HTML some other way:
 
-```
-if ('requestPaint' in HTMLCanvasElement.prototype) {
+```js
+const supportsHtmlInCanvas = 'requestPaint' in HTMLCanvasElement.prototype;
+if (supportsHtmlInCanvas) {
   // Use HTML in Canvas API
 } else {
-  // Use fallback strategy
+  // Use fallback strategy, e.g. canvas.after(htmlContent)
 }
 ```
 
@@ -56,9 +57,11 @@ observer.observe(canvas, options);
 
 4. Render the HTML content to the canvas inside a `canvas.onpaint` event handler:
 
-- In WebGL context, use the `texElementImage2D` method:
+- In WebGL context, use the `texElementImage2D` method. `gl.RGBA8` is a sized internal format, which WebGL 2 textures accept but WebGL 1 textures do not, so get the context with `getContext('webgl2')`:
 
 ```js
+const gl = canvas.getContext('webgl2');
+
 canvas.onpaint = () => {
   if (gl.texElementImage2D) {
     try {
@@ -70,19 +73,19 @@ canvas.onpaint = () => {
 };
 ```
 
-- In WebGPU context, use the `copyElementImageToTexture` method:
+- In WebGPU context, use the `copyElementImageToTexture` method. The destination texture needs `COPY_DST` and `RENDER_ATTACHMENT` usage (see the WebGPU example below):
 
 ```js
 canvas.onpaint = () => {
-  if (root.device.queue.copyElementImageToTexture) {
+  if (device.queue.copyElementImageToTexture) {
     try {
-      const sourceDict = { source: valueElement };
+      const sourceDict = { source: uiElement };
       const destDict = {
         destination: { texture: targetTexture },
-        width: 512,
-        height: 128,
+        width: targetTexture.width,
+        height: targetTexture.height,
       };
-      root.device.queue.copyElementImageToTexture(sourceDict, destDict);
+      device.queue.copyElementImageToTexture(sourceDict, destDict);
     } catch (err) {
       console.error('copyElementImageToTexture copy failed:', err);
     }
@@ -155,38 +158,37 @@ if (canvas.getElementTransform) {
 }
 ```
 
-6. [Troubleshooting] If the developer is experiencing a mismatch in the DOM logical layout in 3D even after applying the CSS transform from step 5, check if the developer is experiencing the issue in Chromium 148 or earlier. If that's the case, check if `transform.is2D` is correctly set to false for a 3D DOMMatrix. If not, re-initialize the DOMMatrix which corrects `is2D` to be false before applying the transform to the target HTML element. This issue is fixed in Chromium 149+, and if the developer is experiencing it in newer Chromium versions, the is2D value is not the cause:
+6. [Troubleshooting] If the developer is experiencing a mismatch in the DOM logical layout in 3D even after applying the CSS transform from step 5, check if the developer is experiencing the issue in Chromium 148 or earlier. If that's the case, check if `is2D` is correctly set to false on the 3D DOMMatrix returned by `getElementTransform()`. If not, re-initialize that DOMMatrix, which corrects `is2D` to be false, and apply the re-initialized matrix to the target HTML element. A DOMMatrix with `is2D` set to true serializes as a 2D `matrix()` and drops its 3D components. This issue is fixed in Chromium 149+, and if the developer is experiencing it in newer Chromium versions, the is2D value is not the cause:
 
 ```js
-if (transform.is2D) {
+let computedTransform = canvas.getElementTransform(
+  targetHTMLElement,
+  screenSpaceTransform,
+);
+if (computedTransform.is2D) {
   // Workaround for Chromium bug https://crbug.com/512171941
-  // affecting Chrome versions under 149 where `transform.is2D`
-  // is incorrectly true for a 3D DOMMatrix. The assignment
-  // below re-initializes the DOMMatrix which corrects is2D to be false.
-  transform = DOMMatrix.fromFloat64Array(transform.toFloat64Array());
+  // affecting Chrome versions under 149 where `is2D`
+  // is incorrectly true for a 3D DOMMatrix. Re-creating the matrix
+  // from its 16 values yields a 3D DOMMatrix with is2D false.
+  computedTransform = DOMMatrix.fromFloat64Array(computedTransform.toFloat64Array());
 }
 targetHTMLElement.style.transform = computedTransform.toString();
 ```
 
 ### Three.js
 
-1. Check if HTML-in-Canvas is supported in the browser:
+`HTMLTexture` and the `InteractionManager` addon are available from three.js r184, with both `WebGLRenderer` and `WebGPURenderer`. The renderer moves the texture's element into its canvas and sets `layoutsubtree`; `InteractionManager` sets the element's CSS transform every frame so pointer events reach it.
 
-```
-if ('requestPaint' in HTMLCanvasElement.prototype) {
-  // Use HTML in Canvas API
-} else {
-  // Use fallback strategy
-}
-```
+1. Check if HTML-in-Canvas is supported in the browser. Without support, `HTMLTexture` uploads nothing, so take a real fallback branch: install the polyfill (see [HTML-in-Canvas polyfill](#html-in-canvas-polyfill)) or show the HTML outside the scene.
 
 2. Create a custom geometry and material for the HTML content.
 
-3. Pass the DOM element into THREE.HTMLTexture:
+3. Pass the DOM element into `HTMLTexture`, and register the mesh with `InteractionManager`:
 ```js
   material.map = new THREE.HTMLTexture(element);
   mesh = new THREE.Mesh( geometry, material );
   scene.add( mesh );
+  interactions.add( mesh );
 ```
 
 ## Example code
@@ -203,27 +205,29 @@ if ('requestPaint' in HTMLCanvasElement.prototype) {
 
 <script>
   const canvas = document.getElementById("canvas");
-  const gl = canvas.getContext("webgl");
   const uiElement = document.getElementById("ui-element");
+  const gl = canvas.getContext("webgl2");
 
-  // Setup WebGL texture...
-  const texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
+  if (!('requestPaint' in HTMLCanvasElement.prototype) || !gl || !gl.texElementImage2D) {
+    // Fallback: without HTML-in-Canvas or WebGL 2, the canvas children are not
+    // rendered. Show the UI as regular DOM, outside the 3D scene.
+    canvas.after(uiElement);
+  } else {
+    // Setup WebGL texture...
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
 
-  canvas.onpaint = () => {
-    // 1. Update texture with HTML content
-    if (gl.texElementImage2D) {
+    canvas.onpaint = () => {
+      // 1. Update texture with HTML content
       try {
         gl.texElementImage2D(gl.TEXTURE_2D, gl.RGBA8, uiElement);
       } catch (err) {
         console.error('texElementImage2D copy failed:', err);
       }
-    }
 
-    // ... Render your 3D scene here, calculating htmlElementMVP matrix ...
+      // ... Render your 3D scene here, calculating htmlElementMVP matrix ...
 
-    // 2. Sync DOM position with 3D scene
-    if (canvas.getElementTransform) {
+      // 2. Sync DOM position with 3D scene
       const mvpDOM = new DOMMatrix(Array.from(htmlElementMVP));
 
       // Recalculate the DPR compensation mapping
@@ -249,8 +253,8 @@ if ('requestPaint' in HTMLCanvasElement.prototype) {
         screenSpaceTransform,
       );
       uiElement.style.transform = computedTransform.toString();
-    }
-  };
+    };
+  }
 </script>
 ```
 
@@ -263,33 +267,50 @@ if ('requestPaint' in HTMLCanvasElement.prototype) {
   </div>
 </canvas>
 
-<script>
+<script type="module">
   const canvas = document.getElementById("canvas");
-  const context = canvas.getContext("webgpu");
   const uiElement = document.getElementById("ui-element");
 
-  // Setup WebGPU...
-  // const device = ...
-  // const targetTexture = ...
+  const adapter = await navigator.gpu?.requestAdapter();
+  const device = await adapter?.requestDevice();
 
-  canvas.onpaint = () => {
-    // 1. Copy HTML content to texture
-    if (device.queue.copyElementImageToTexture) {
+  if (!('requestPaint' in HTMLCanvasElement.prototype) || !device ||
+      !device.queue.copyElementImageToTexture) {
+    // Fallback: without HTML-in-Canvas or WebGPU, the canvas children are not
+    // rendered. Show the UI as regular DOM, outside the 3D scene.
+    canvas.after(uiElement);
+  } else {
+    const context = canvas.getContext("webgpu");
+    context.configure({ device, format: navigator.gpu.getPreferredCanvasFormat() });
+
+    // Texture that receives the HTML snapshot, sized in canvas grid pixels
+    const targetTexture = device.createTexture({
+      size: [
+        Math.round(uiElement.offsetWidth * devicePixelRatio),
+        Math.round(uiElement.offsetHeight * devicePixelRatio),
+      ],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+
+    canvas.onpaint = () => {
+      // 1. Copy HTML content to texture
       try {
         const sourceDict = { source: uiElement };
         const destDict = {
           destination: { texture: targetTexture },
-          width: width,
-          height: height,
+          width: targetTexture.width,
+          height: targetTexture.height,
         };
         device.queue.copyElementImageToTexture(sourceDict, destDict);
       } catch (err) {
         console.error('copyElementImageToTexture copy failed:', err);
       }
-    }
 
-    // 2. Sync DOM position (same matrix math as WebGL)
-    if (canvas.getElementTransform) {
+      // ... Render your 3D scene here, calculating htmlElementMVP matrix ...
+
+      // 2. Sync DOM position (same matrix math as WebGL)
       const mvpDOM = new DOMMatrix(Array.from(htmlElementMVP));
 
       // Recalculate the DPR compensation mapping
@@ -315,39 +336,57 @@ if ('requestPaint' in HTMLCanvasElement.prototype) {
         screenSpaceTransform,
       );
       uiElement.style.transform = computedTransform.toString();
-    }
-  };
+    };
+  }
 </script>
 ```
 
 ### Three.js
 
 ```js
-// 1. Initialize Three.js camera, scene, renderer, mesh, interactions;
+// three.js r184 or later
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { InteractionManager } from 'three/addons/interaction/InteractionManager.js';
+import { installHtmlInCanvasPolyfill } from 'three-html-render/polyfill';
 
-// 2. Ensure HTML-in-Canvas feature support
+// 1. Feature support: without HTML-in-Canvas, HTMLTexture uploads nothing.
 if (!('requestPaint' in HTMLCanvasElement.prototype)) {
-  // Use a fallback strategy
+  installHtmlInCanvasPolyfill(); // or show the HTML outside the scene instead
 }
 
-// 3. Initialize the source HTML DOM element
+// 2. Initialize the renderer, camera and scene
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
+camera.position.z = 500;
+const scene = new THREE.Scene();
+
+// 3. Initialize the source HTML DOM element (the renderer moves it into its canvas)
 const element = document.createElement('div');
-element.innerHTML = '<h1>Hello World</h1>';
+element.innerHTML = '<h1>Hello World</h1><button>Click me</button>';
 
-// 4. Create geometry and material
-const geometry = new RoundedBoxGeometry( 100, 100, 100, 10, 10 );
-const material = new THREE.MeshStandardMaterial( { roughness: 0, metalness: 0.5 } );
-
-// 5. Pass the DOM element into THREE.HTMLTexture
+// 4. Create geometry and material, and pass the DOM element into THREE.HTMLTexture
+const geometry = new RoundedBoxGeometry(100, 100, 100, 10, 10);
+const material = new THREE.MeshBasicMaterial();
 material.map = new THREE.HTMLTexture(element);
 
-mesh = new THREE.Mesh( geometry, material );
-scene.add( mesh );
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
 
-// 6. Render Loop
-function animate() {
+// 5. Keep the element's CSS transform aligned with the mesh so clicks reach it
+const interactions = new InteractionManager();
+interactions.connect(renderer, camera);
+interactions.add(mesh);
+
+// 6. Render loop
+renderer.setAnimationLoop(() => {
+  interactions.update();
   renderer.render(scene, camera);
-}
+});
 ```
 
 ## Best Practices
@@ -365,26 +404,32 @@ function animate() {
 
 {{ BASELINE_STATUS("canvas-html") }}
 
-The HTML-in-Canvas API is not currently supported in all modern browsers, thus a fallback strategy is typically required.
+HTML-in-Canvas is experimental. The explainer lists only a Chromium implementation, behind the `chrome://flags/#canvas-draw-element` flag; an origin trial ran in Chrome 148 to 150. The API is still changing: the current explainer replaces `layoutsubtree` with `content="drawable"`, `texElementImage2D()` with `texElementSubImage2D()`, `copyElementImageToTexture()` with `drawElementImageToTexture()`, and the two-argument `getElementTransform()` with `updateElementGeometry()`. This guide shows the origin-trial API, so check the [explainer](https://github.com/WICG/html-in-canvas) before you ship.
 
-However, given the improved performance benefits of this API, HTML-in-Canvas should be used if the browser supports it.
+Treat HTML-in-Canvas as a progressive enhancement, not as the default rendering path. The page MUST work without it, and the fallback branch MUST run before any scene setup that assumes the HTML is drawn into the canvas.
 
-The fallback strategy depends on the use case. For example, for an interactive HTML content in canvas, if HTML-in-Canvas is not supported, place the HTML content on top of the canvas using CSS.
+The fallback strategy depends on the use case. For example, for an interactive HTML content in canvas, if HTML-in-Canvas is not supported, place the HTML content on top of the canvas using CSS, or after the canvas as in the examples above. Without support, children of the canvas are fallback content and are not rendered.
 
 ### HTML-in-Canvas polyfill
 
-Use the following polyfill script to mimic the HTML-in-Canvas API in browsers that do not support it.
+The third-party `three-html-render` package (MIT, 0.1.x, first published in April 2026) emulates the API in browsers that do not support it; the three.js `HTMLTexture` examples use it. It moves the canvas children into an offscreen host element and rasterizes them through an SVG `foreignObject` image, so rendering, performance and input handling differ from the native API; read its known limitations before you rely on it. Pin an exact version.
 
-1. Install or embed the library:
-
-```
-# Install
-npm install three-html-render
-```
+1. Install the library and call `installHtmlInCanvasPolyfill()` (it does nothing when the native API is present):
 
 ```
-# Embed
-<script src="https://cdn.jsdelivr.net/npm/three-html-render/dist/polyfill.js"></script>
+npm install --save-exact three-html-render@0.1.2
 ```
 
-2. Run the `installHtmlInCanvasPolyfill()` method to translate HTML-in-Canvas.
+```js
+import { installHtmlInCanvasPolyfill } from 'three-html-render/polyfill';
+
+installHtmlInCanvasPolyfill();
+```
+
+2. Or, without a bundler, load the pinned build with Subresource Integrity. This classic script installs the polyfill as soon as it loads:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/three-html-render@0.1.2/dist/polyfill.js"
+  integrity="sha384-MpD3wWXNXVuH2lbj5VNsH4o1Fn7ha/39AC9BJBqZjICRHgcPkedcfFScYS4sGz9p"
+  crossorigin="anonymous"></script>
+```

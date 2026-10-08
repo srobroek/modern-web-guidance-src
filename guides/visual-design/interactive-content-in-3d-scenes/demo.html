@@ -38,8 +38,15 @@
         const gl = canvas.getContext('webgl2');
         const draw_element = document.getElementById('draw_element');
 
-        if (!gl) {
-            console.error("WebGL2 not supported");
+        const supportsHtmlInCanvas = 'requestPaint' in HTMLCanvasElement.prototype &&
+            gl !== null && typeof gl.texElementImage2D === 'function';
+
+        if (!supportsHtmlInCanvas) {
+            // Fallback: without HTML-in-Canvas or WebGL 2 the canvas children
+            // are not rendered. Show the content as regular DOM, outside the
+            // 3D scene, before any WebGL setup runs.
+            canvas.after(draw_element);
+            canvas.hidden = true;
         }
 
         // Shaders
@@ -250,13 +257,17 @@
             canvas.requestPaint();
             requestAnimationFrame(animate);
         }
-        requestAnimationFrame(animate);
+        if (supportsHtmlInCanvas) {
+            requestAnimationFrame(animate);
+        }
 
         const observer = new ResizeObserver(([entry]) => {
             const dpc = entry.devicePixelContentBoxSize;
             canvas.width = dpc ? dpc[0].inlineSize : Math.round(entry.contentRect.width * window.devicePixelRatio);
             canvas.height = dpc ? dpc[0].blockSize : Math.round(entry.contentRect.height * window.devicePixelRatio);
-            canvas.requestPaint();
+            if (supportsHtmlInCanvas) {
+                canvas.requestPaint();
+            }
         });
         const supportsDevicePixelContentBox = 
             typeof ResizeObserverEntry !== 'undefined' && 
