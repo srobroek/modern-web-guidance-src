@@ -13,6 +13,7 @@
     [popover="manual"] {
       position-anchor: --toast-container;
       position-area: bottom;
+      margin-bottom: calc(var(--toast-index, 1) * 1rem);
       margin-bottom: calc(sibling-index() * 1rem);
       padding: 0.5rem 1rem;
       background: lightgreen;
@@ -36,7 +37,12 @@
       }
     }
 
-    button[popovertargetaction="hide"] {
+    .toast-message {
+      display: inline;
+      margin: 0;
+    }
+
+    .toast-close {
       background:none;
       border:none;
       cursor:pointer;
@@ -51,18 +57,59 @@
   </style>
 </head>
 <body>
-  <button id="toast-trigger" onclick="showToast()">Trigger Toast</button>
-  <div class="toast-container">
-    <div id="toast" popover="manual">
-      Success!
-      <button popovertarget="toast" popovertargetaction="hide" aria-label="close">x</button>
+  <button class="toast-trigger" onclick="showToast('Success!')">Trigger Toast</button>
+  <!-- The live region is in the initial markup, before any toast is added. -->
+  <div class="toast-container" aria-live="polite"></div>
+  <template id="toast-template">
+    <div class="toast" popover="manual">
+      <p class="toast-message"></p>
+      <button class="toast-close" aria-label="Dismiss notification">×</button>
     </div>
-  </div>
+  </template>
   <script>
-    function showToast() {
-      const t = document.getElementById('toast');
-      t.showPopover();
-      setTimeout(() => { if (t.matches(':popover-open')) t.hidePopover(); }, 3000);
+    const container = document.querySelector('.toast-container');
+    const template = document.getElementById('toast-template');
+
+    function showToast(message, { timeout = 3000 } = {}) {
+      const toast = template.content.firstElementChild.cloneNode(true);
+      toast.querySelector('.toast-message').textContent = message;
+      toast.querySelector('.toast-close').addEventListener('click', () => toast.hidePopover());
+      container.append(toast);
+      // Show without moving focus; the live region announces the new toast.
+      toast.showPopover();
+
+      // Auto-dismiss, but pause while the toast is hovered or focused.
+      let hovered = false;
+      let focused = false;
+      let timer;
+      const updateTimer = () => {
+        clearTimeout(timer);
+        if (!hovered && !focused) timer = setTimeout(() => toast.hidePopover(), timeout);
+      };
+      toast.addEventListener('pointerenter', () => { hovered = true; updateTimer(); });
+      toast.addEventListener('pointerleave', () => { hovered = false; updateTimer(); });
+      toast.addEventListener('focusin', () => { focused = true; updateTimer(); });
+      toast.addEventListener('focusout', (event) => {
+        focused = toast.contains(event.relatedTarget);
+        updateTimer();
+      });
+      updateTimer();
+
+      // Remove the toast after its exit transition so sibling-index() stays accurate.
+      toast.addEventListener('toggle', (event) => {
+        if (event.newState !== 'closed') return;
+        clearTimeout(timer);
+        Promise.allSettled(toast.getAnimations().map((animation) => animation.finished))
+          .then(() => toast.remove());
+      });
+    }
+
+    // sibling-index() fallback: number the toasts from JavaScript.
+    if (!CSS.supports('margin-bottom', 'calc(sibling-index() * 1rem)')) {
+      const renumber = () => [...container.children].forEach((toast, index) => {
+        toast.style.setProperty('--toast-index', index + 1);
+      });
+      new MutationObserver(renumber).observe(container, { childList: true });
     }
   </script>
 </body>
